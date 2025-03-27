@@ -1,0 +1,409 @@
+---
+title: "Annual Deep 7 catch from the Bottomfish Vessel Registry"
+author: "Marc Nadon"
+format: html
+---
+
+## General description
+
+This script creates annual distributions of species-specific mean-catch-per-vessel
+by county using a selection of fishers from the Fishing Reporting System (FRS) to
+serve as non-commercial proxies. This involves classifying all cml_no x year
+records as either "commercial" or "non-commercial", based on a series of filters :
+a) cml owner conducted a trip with a high catch in a given year, with per-trip max
+catch trigger points derived from MRIP "never-sell" interviews (see script
+03_MRIP_interviews_catch.qmd), and b) cml owner had a high catch per year, derived
+from Lamson (2007) mail surveys. These filters are applied at both the species
+level and all D7 together.
+
+The script does this by 1) loading a list of bottomfish fishers and establishing
+the number of active fishers in a given year, 2) loading catch reports contained
+in the Fisher Reporting System (FRS), 3) selecting a subset of fishers from the
+FRS (i.e. non-commercial fisher proxies) , and 4) sampling annual catches by
+county from these fishers. The end product are distributions of non-commercial
+Deep 7 catches in Hawaii, by year.
+
+### Load packages and define root directory
+
+```{r}
+#| warning: false
+require(pacman,quietly=T); pacman::p_load("tidyverse","data.table","this.path",
+                              "readxl","flextable","ggridges","ggthemes")
+root_dir <- here(..=1)
+dir.create(root_dir,"03_Outputs")
+set_flextable_defaults(na_str="N/A",table.layout="autofit",line_spacing=0.5)
+options(dplyr.summarise.inform = FALSE)
+```
+
+## Enter the limits that define non-commercial proxies in the FRS
+
+These limits are derived from the MRIP fishing trip interviews (2004-2022) and
+represent the 99th percentile of catches, when the catches are not zero.
+
+```{r}
+# Per-trip limits (MRIP interviews 2004-2022)
+d7_lbs_per_trip     <- 94
+uku_lbs_per_trip    <- 50
+paka_lbs_per_trip   <- 70
+onaga_lbs_per_trip  <- 108
+ehu_lbs_per_trip    <- 40
+kale_lbs_per_trip   <- 28
+gindai_lbs_per_trip <- 21
+  
+# Per-year limits (Lamson 2007, mail surveys, "never sell BF")
+d7_lbs_per_year     <- 486
+uku_lbs_per_year    <- 300
+paka_lbs_per_year   <- 213
+onaga_lbs_per_year  <- 150
+ehu_lbs_per_year    <- 180
+kale_lbs_per_year   <- 83
+gindai_lbs_per_year <- 82
+```
+
+### Load the necessary data sets
+
+We need the registered fisher list and the FRS data.
+
+```{r}
+# Load fisher list from 01_Registered_fisher_list.qmd
+FL <- read_xlsx(fs::path(root_dir,"03_Outputs","Hawaii Registered Fishers.xlsx"))
+
+# Load fisher counts from 01_Registered_fisher_list.qmd.
+FC <- fread(fs::path(root_dir,"03_Outputs","Fisher_counts.csv")) %>% 
+              filter(cml_registr=="N")
+
+# Load FRS data.
+FS <- read_rds(fs::path(root_dir,"01_Data","HFY1994_2023.rds")) %>%
+         mutate(year=year(FISHED_DATE)) %>% filter(year>=2011) %>% 
+         as.data.table()
+```
+
+### Clean up the FRS catch data and merge with fisher information
+
+Select FRS columns and rename certain variables.
+
+```{r}
+F1 <- FS %>%  select(cml_no.fs=FISHER_LIC_FK,
+                     year,
+                     fished_date=FISHED_DATE,
+                     area_fk=AREA_FK,
+                     gear_fk=GEAR_FK,
+                     hours=HOURS_FISHED,
+                     num_gear=NUM_GEAR,
+                     landing_port_fk=LANDING_PORT_FK,
+                     fisher_fname=FISHER_FNAME,
+                     fisher_lname=FISHER_LNAME,
+                     species_fk=SPECIES_FK,
+                     num_kept=NUM_KEPT,
+                     lbs_kept=LBS_KEPT,
+                     lbs_sold=LBS_SOLD)
+
+# Only select Deep-sea handline trip (>98% of D7 are caught on this gear)
+F1 <- F1 %>% filter(gear_fk==3)
+
+F1[species_fk==36]$species_fk <- 21 #Set ehu code 36 to new code 21
+F1$species_fk <- paste0("s",F1$species_fk)
+```
+
+Now, let's join catch data with fisher information from the Hawaii Registered
+Fisher list.
+
+```{r}
+F1 <- F1 %>% left_join(FL,by=join_by(cml_no.fs==cml_no,year))
+
+cat("A small number of records didn't match: ",nrow(unique(F1[is.na(county)])))
+
+F1 <- F1 %>% filter(!is.na(county))
+```
+
+[NOTE: there are about 50 cml_no with no county info. Checking transaction list,
+these are CML that didn't have a vessel_id listed... and said Captain==N, but
+still reported D7 ("no vessel" cmls were filtered early on in Step 1, thus the
+lack of match). What to do with these?]{.underline}
+
+Create unique identifiers for trips and sum catch by species
+
+```{r}
+F1 <- F1 %>% mutate(trip_id=paste0(cml_no.fs,"_",fished_date)) %>% 
+  group_by(year,cml_no.fs,cml_registr,bf_registr,county,trip_id,species_fk) %>%
+       summarize(lbs_kept=sum(lbs_kept))
+```
+
+Calculate the aggregated catch per trip
+
+```{r}
+# Pivot the trip catch in lbs by species.
+F2 <- F1 %>%
+  pivot_wider(names_from=species_fk,values_from=lbs_kept,values_fill=0) %>%
+      as.data.table()
+
+# Deep7 catch
+F2$d7 <- F2$s15+F2$s17+F2$s19+F2$s21+F2$s22+F2$s58+F2$s97
+
+# All species
+F2$allsp <- rowSums(F2[,7:ncol(F2)])
+
+# Drop all other species columns except D7
+F2 <- F2 %>% select(year:trip_id,s20,s15,s17,s19,s21,s22,s58,s97,d7,allsp)
+```
+
+Save this Fisher trip information for the Shinny app used to explore the different
+options available to generate non-commercial catch.
+
+```{r}
+write_csv(F2,fs::path(root_dir,"03_Outputs","FRS_trips.csv"))
+```
+
+Classify all CMLs as either "commercial" (C) or "non-commercial" (NC), based on
+the per-trip limits defined previously.
+
+```{r}
+# All trips classified as non-commercial as a starting point.
+F2$trip_type <- "nc_trip"
+
+# This classification will change to commercial if catches go higher than one
+# of these trigger points.
+F2[d7  > d7_lbs_per_trip|
+   s17 > kale_lbs_per_trip| 
+   s19 > paka_lbs_per_trip| 
+   s21 > ehu_lbs_per_trip|
+   s22 > onaga_lbs_per_trip|
+   s97 > gindai_lbs_per_trip| 
+   s20 > uku_lbs_per_trip 
+   ]$trip_type <- "comm_trip"
+
+# Create a separate data set to see trip stats by county and annual catch
+F2a <- F2 %>% select(year,cml_no.fs,county,trip_id,trip_type) %>% 
+             group_by(year,cml_no.fs,county,trip_type) %>%
+             summarize(n=n()) %>%
+             pivot_wider(names_from=trip_type,values_from=n,values_fill=0) %>% 
+             as.data.table()
+
+# Classify CML x year combinations into fisher types.
+F2a$fisher_type               <- "Comm"
+F2a[comm_trip==0]$fisher_type <- "NC"
+
+# Summary
+F2b <- F2a %>% group_by(year) %>% 
+         summarize(nc_trip=sum(nc_trip),comm_trip=sum(comm_trip)) 
+
+ggplot(data=F2b,aes(x=year))+geom_line(aes(y=nc_trip),col="blue")+
+  geom_line(aes(y=comm_trip),col="red")+ylab("# of trips")
+
+ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","Trips_all.png"),
+       height=4,width=8)
+```
+
+Quick check on the distribution of trip catches for all BF + caught a D7 fishers.
+
+```{r}
+F2 %>% filter(d7!=0&bf_registr=="Y"&year==2023) %>% ggplot(aes(x=d7))+
+          geom_histogram(breaks=c(seq(0,500,by=10),max(F2$d7)),
+                         position="identity")+
+          labs(x="Deep7 catch per trip (lbs)",y="Number of trips")+
+          coord_cartesian(xlim=c(0,480))+theme_bw(base_size = 15)
+
+ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","Comm_Trip_2024_D7.png"),
+       height=5,width=8)
+```
+
+Let's sum the trip catch by *year* and *cml_no*, and merge the fisher information
+from the step above with this data set.
+
+```{r}
+F3 <- F2 %>% group_by(year,cml_no.fs,bf_registr,cml_registr,county) %>% 
+             summarize_if(is.numeric,sum)
+
+F3 <- F3 %>% left_join(F2a,join_by(cml_no.fs,year,county)) %>%
+              relocate(nc_trip:fisher_type,.after=cml_no.fs) %>% as.data.table()
+```
+
+Now we can apply the annual catch filters derived from Lamson (2007).
+
+```{r}
+# This classification will change to commercial if catches go higher than one of these trigger points.
+
+#cat("Number of NC fishers, pre-filter: ",nrow(F3[fisher_type=="NC"]),"\n")
+
+#F3[d7  > d7_lbs_per_year|
+#   s17 > kale_lbs_per_year| 
+#   s19 > paka_lbs_per_year| 
+#   s21 > ehu_lbs_per_year|
+#   s22 > onaga_lbs_per_year|
+#   s97 > gindai_lbs_per_year| 
+#   s20 > uku_lbs_per_year 
+#   ]$fisher_type <- "comm_trip"
+
+#cat("Number of NC fishers, post-filter: ",nrow(F3[fisher_type=="NC"]))
+```
+
+An important step is to decide which fishers to remove from this data set. One
+filter we discussed was to remove fishers that did not catch a single D7 during a
+year. Another discussion is to just keep fishers registered on the BFVR.
+
+```{r}
+cat("Prop. caught D7: ",round(nrow(F3[d7>0])/nrow(F3),2),"\n")
+cat("Prop. caught D7 and BF registered: ",
+             round(nrow(F3[d7>0&bf_registr=="Y"])/nrow(F3),2))
+```
+
+Important step: decide which filters to apply. Let's start with keep fishers D7\>0
+and BF registered only.
+
+```{r}
+F3 <- F3 %>% filter(d7!=0&bf_registr=="Y")
+
+#F3 <- F3 %>% filter(d7!=0)
+```
+
+NOTE: the difference between these two filters appear to be about 29,000 lb vs
+30,000 lb yearly in average catch. Not as big of a deal as originally thought.
+
+Now let's only keep the "non-commercial" fisher proxies and clean up the data.
+
+```{r}
+F4 <- F3 %>% filter(fisher_type=="NC") %>% 
+              select(year,cml_no.fs,county,6:allsp) %>% 
+                arrange(year,county) 
+```
+
+## Generate annual non-commercial catch distribution
+
+Now that we have 1) the number of active non-commercial BF fisher by year, and 2)
+a proxy data set of annual catch per "non-commercial" fisher, we can sample "n"
+times from that annual catch data set, where "n" is the number of non-comm. BF
+fishers in a specific *year* and *county*. This will generate a final distribution
+of non-commercial catches by year.
+
+```{r}
+# Add the # of NC vessels by year x County to the catch data
+F4 <- F4 %>% left_join(FC,by=join_by(year,county)) %>% 
+                relocate(n_bf_fishers,.after=county)
+
+# Check the number of fishers to sample from in each county x year with the number of active NC D7 fishers from Step 1.
+num.frs  <- as.data.table(table(F4$year,F4$county)) %>% 
+            rename(year=V1,county=V2,n_frs=N) %>% mutate(year=as.numeric(year))
+chck.num <- D3 %>% inner_join(num.frs,by=join_by(year,county))
+
+write_csv(chck.num,file=fs::path(root_dir,"03_Outputs","Frs_vs_BFVR.csv"))
+
+# Resample the catch data by the number of vessels in a year X county block. Since there are often less fishers to sample than the n target, we need to sample with replacement. 
+Results <- list()
+for(i in 1:1000){
+ aSample <- F4 %>% group_by(year,county) %>% 
+                    sample_n(n_bf_fishers[1],replace=T) %>% 
+                      add_column(iter=i) %>% relocate(iter,.before=year)
+ Results <- append(Results,list(aSample))
+}
+
+Results <- rbindlist(Results)
+```
+
+Sum fisher-specific annual catches by iteration.
+
+```{r}
+Final <- Results %>% group_by(iter,year,county) %>%
+           summarize_at(vars(s20:allsp),sum)
+```
+
+Plot results.
+
+```{r}
+# Simple line plot
+Final %>% group_by(year,county) %>% summarize_at(vars(s20:allsp),mean) %>% 
+    ggplot(aes(x=year,y=d7))+
+      geom_line()+geom_point()+
+      facet_wrap(~county)+theme_bw(base_size=16)+
+      theme(axis.text.x=element_text(angle=45,hjust=1))+
+      labs(x="Year",y="Deep7 non-commercial catch (lbs)")
+
+suppressMessages(ggsave(last_plot(),
+  file=fs::path(root_dir,"03_Outputs","NC_county_simple.png"),width=8,height=6))
+
+# Box plot
+ggplot(data=Final,aes(x=factor(year),y=d7))+
+  geom_boxplot(fill="lightblue",alpha=0.6,outlier.size=0.6)+
+  facet_wrap(~county)+theme_minimal()+
+  theme(axis.text.x=element_text(angle=45,hjust=1))+
+  labs(x="Year",y="Deep7 non-commercial catch (lbs)")
+
+# Ridge plot
+suppressMessages(print( 
+      ggplot(data=Final,aes(y=factor(year),x=d7))+
+      geom_density_ridges(scale=1,fill="lightblue",
+                      quantile_lines=T,quantiles=2,
+                      rel_min_height=0.0001)+
+      theme_minimal(base_size=13)+
+      theme(axis.text.x=element_text(angle=45,hjust=1),
+            strip.text = element_text(size = 14))+
+      coord_flip()+labs(y="Year",x="Deep7 non-commercial catch (lbs)")+
+      facet_wrap(~county,ncol=2)
+))
+
+suppressMessages(ggsave(last_plot(),
+      file=fs::path(root_dir,"03_Outputs","NC_county.png"),width=8,height=6))
+```
+
+Finally, sum county-level catches by year and generate catch tables.
+
+```{r}
+Final.b <- Final %>% group_by(iter,year) %>% summarize_at(vars(s20:allsp),sum)
+Final.c <- Final.b %>% group_by(year) %>% summarize_at(vars(s20:allsp),mean)
+
+# Some per-species summary
+Final.b.sp <- Final.b %>% pivot_longer(
+                cols=s20:s97,names_to="species",values_to="lbs_caught") %>%
+                  filter(species %in% c("s19","s21","s22")) %>%
+                     select(iter,year,species,lbs_caught)
+
+# Some extra summary for the Deep7 group
+Final.d <- Final.b %>% group_by(year) %>%
+                  summarize(d7.meanlog=mean(log(d7)),
+                            d7.sdlog=sd(log(d7)),
+                            d7.mean=mean(d7))
+
+write_csv(Final.d,file=fs::path(root_dir,"03_Outputs","NC_BF_all.csv"))
+```
+
+Some figures and comparison with the CML catch.
+
+```{r}
+# Species figure
+suppressMessages(print( 
+      ggplot(data=Final.b.sp,aes(y=factor(year),x=lbs_caught))+
+      geom_density_ridges(scale=1,fill="lightblue",
+                      quantile_lines=T,quantiles=2,
+                      rel_min_height=0.0001)+
+      theme_minimal(base_size=13)+
+      theme(axis.text.x=element_text(angle=45,hjust=1),
+            strip.text = element_text(size = 14))+
+      coord_flip()+labs(y="Year",x="Non-commercial catch (lbs)")+
+      facet_wrap(~species,ncol=3)
+      ))
+
+# Deep 7 figure
+suppressMessages(print(ggplot()+
+      geom_density_ridges(data=Final.b,aes(y=factor(year),x=d7),
+                          scale=1,fill="lightblue",
+                          quantile_lines=T,quantiles=2,
+                          rel_min_height=0.0001)+
+      theme_minimal(base_size=14)+
+      theme(axis.text.x=element_text(angle=45,hjust=1))+
+      coord_flip()+labs(y="Year",x="Deep7 non-commercial catch (lbs)")
+))
+suppressMessages(ggsave(last_plot(),width=8,height=5,
+              file=fs::path(root_dir,"03_Outputs","NC_BF_all.png")))
+
+# Simple Deep 7 figure
+# Simple line plot
+Final.b %>% group_by(year) %>% summarize_at(vars(s20:allsp),mean) %>% 
+    ggplot(aes(x=year,y=d7))+
+      geom_line()+geom_point()+
+      theme_bw(base_size=16)+ylim(0,50000)+
+      scale_x_continuous(breaks=seq(2011,2023,by=1))+
+      theme(axis.text.x=element_text(angle=45,hjust=1))+
+      labs(x="Year",y="Deep7 non-commercial catch (lbs)")
+
+suppressMessages(ggsave(last_plot(),
+  file=fs::path(root_dir,"03_Outputs","NC_simple.png"),width=8,height=6))
+```

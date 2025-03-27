@@ -1,0 +1,133 @@
+---
+title: "MRIP pure recreational catch distribution"
+author: "Marc Nadon"
+execute: 
+  warning: false
+  error: false
+format: 
+ html:
+  embed-resources: true
+editor: visual
+page-layout: article
+---
+
+This script is to obtain the distribution of Deep7 and total per-trip catches for
+non-commercial fishers. To do so, we acquired the MRIP catch interviews from 2003
+to 2022 where the question "Do you ever sell your catch?" was recorded. This allow
+us to filter catch interviews conducted by pure recreational fishers and explore
+the distribution of their catch.
+
+## Preliminary steps
+
+### Load packages and define root directory
+
+```{r}
+suppressWarnings( require(pacman,quietly=T) )
+pacman::p_load("tidyverse","data.table","this.path","readxl")
+root_dir <- here(..=1)
+
+# Quiet the summarize function messages, 
+# add to 16 digits to load the interview_id correctly.
+options(dplyr.summarise.inform = FALSE,digits=16)
+```
+
+### Load the necessary data sets
+
+We obtained the MRIP interviews from Hongguang Ma.
+
+```{r}
+IT <-fread(
+        fs::path(root_dir,"01_Data","MRIP never sell interviews.csv")) %>% 
+         select(interview_id=ID_CODE,sp_mrip_id=SP_CODE,num_caught=catch) %>% 
+           mutate(sp_mrip_id=as.character(sp_mrip_id))
+
+SP <- fread(fs::path(root_dir,"01_Data","mrip_mean_weights.csv")) %>% 
+           mutate(sp_mrip_id=as.character(sp_mrip_id)) %>% 
+              arrange() %>% as.data.table()
+```
+
+Let's merge the species information
+
+```{r}
+IT <- IT %>% left_join(SP,by="sp_mrip_id") 
+```
+
+Let's split up the information contained in the *interview_id*.
+
+```{r}
+# Remove empty spaces.
+IT$interview_id <- str_replace_all(IT$interview_id," ","")
+
+# Split the date out.
+IT <- IT %>% 
+       mutate(interview_date=
+        lubridate::ymd(str_sub(interview_id,start=6,end=nchar(interview_id)-3)),
+              year=lubridate::year(interview_date))
+
+IT <- IT %>% mutate(lbs_caught=num_caught*mrip_mean_lbs) %>% 
+           select(interview_id,year,sci_name,sp_frs_id,
+           sp_mrip_id,num_caught,lbs_caught)
+```
+
+Let's see what the distributions look like globally.
+
+```{r}
+# Catch quantiles, per species and positive catch only.
+Qt.sp <- IT %>% group_by(sp_frs_id) %>%
+  reframe(quant=round(quantile(lbs_caught,c(0.90,0.95,0.99,1)),0),
+                      quantile=c("q90","q95","q99","max")) %>%
+  pivot_wider(id_cols=,names_from=quantile,values_from=quant)
+
+# Catch quantiles for D7 catch (positive-only)
+IT.D7 <- IT %>% filter(sp_frs_id!="s20") %>% group_by(interview_id, year) %>%
+            summarize(num_caught=sum(num_caught),lbs_caught=sum(lbs_caught))
+
+Qt.D7 <- IT.D7 %>% group_by() %>% 
+  reframe(quant=round(quantile(lbs_caught,c(0.90,0.95,0.99,1)),0),
+          quantile=c("q90","q95","q99","max")) %>% 
+              pivot_wider(names_from=quantile,values_from=quant)
+
+# Put everything back together.
+Qt.D7$sp_frs_id <- "d7"
+
+Final <- rbind(Qt.sp,Qt.D7) %>% left_join(SP,by="sp_frs_id") %>%
+  select(sci_name,sp_frs_id,q90,q95,q99,max) %>% as.data.table()
+
+Final[is.na(sci_name)]$sci_name <- "Deep7"
+
+write_csv(Final,fs::path(root_dir,"03_Outputs","mrip_quantiles.csv"))
+```
+
+Some plots.
+
+```{r}
+# Remove rare species.
+ITS <- IT %>% filter(!(sp_frs_id %in% c("s20","s58","s15")))
+FS  <- Final %>% filter(!(sp_frs_id %in% c("s58","s15")))
+
+# Per-species in numbers
+ggplot(data=ITS,aes(x=num_caught))+
+  geom_histogram(binwidth=1)+
+  #geom_vline(data=FS[sci_name!="Deep7"],aes(xintercept=Q99),col="red")+
+  facet_wrap(~sci_name,scales="free")+
+  theme_minimal(base_size=16)+
+  labs(x="Number caught per trip",y="Number of trips")
+
+ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","MRIP_Sp_Num_Caught.png"),
+       height=4,width=8,dpi=300)
+    
+# Per-spcies in pounds
+ggplot(data=IT,aes(x=lbs_caught))+geom_histogram(binwidth=2)+
+  facet_wrap(~sci_name,scales="free")
+  
+# D7 totals
+ggplot(data=IT.D7,aes(x=num_caught)) + geom_histogram(binwidth=1)
+ggplot(data=IT.D7,aes(x=lbs_caught)) + geom_histogram(binwidth=5) +
+  geom_vline(data=FS[sci_name=="Deep7"],aes(xintercept=q99),col="red")+
+  theme_bw(base_size=14)+
+  labs(x="Deep7 catch per trip (lbs)",y="Number of trips")
+
+ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","MRIP_D7_Lbs_Caught.png"),
+       height=4,width=8)
+   
+```

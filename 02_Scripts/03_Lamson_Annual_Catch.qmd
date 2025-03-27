@@ -1,0 +1,31 @@
+---
+title: "Lamson 2007 pure recreational catch distribution"
+author: "Marc Nadon"
+format: html
+editor: visual
+---
+
+This script is to obtain the distribution of Deep7 and total per-trip catches for non-commercial fishers. To do so, we acquired the MRIP catch interviews from 2003 to 2022 where the question "Do you ever sell your catch?" was recorded. This allow us to filter catch interviews conducted by pure recreational fishers and explore the distribution of their catch.
+
+## Preliminary steps
+
+### Load packages and define root directory
+
+```{r}
+suppressWarnings( require(pacman,quietly=T) )
+pacman::p_load("tidyverse","data.table","this.path",
+               "readxl","janitor","flextable","ggridges")
+root_dir <- here(..=1)
+
+# Default table format (flextable package)
+set_flextable_defaults(na_str="N/A",table.layout="autofit",line_spacing=0.5)
+
+# Quiet the summarize function messages, add to 16 digits to load the interview_id correctly.
+options(dplyr.summarise.inform = FALSE,digits=16)
+```
+
+### Load the necessary data sets
+
+We obtained the MRIP interviews from Hongguang Ma.
+
+`{r} IT <-fread(         fs::path(root_dir,"01_Data","MRIP never sell interviews.csv")) %>%           select(interview_id=ID_CODE,species_mrip_id=SP_CODE,num_caught=catch) %>%             mutate(species_mrip_id=as.character(species_mrip_id))  SP <- fread(fs::path(root_dir,"01_Data","mrip_mean_weights.csv")) %>%             mutate(species_mrip_id=as.character(species_mrip_id)) %>%                arrange(species_frs_id) %>% as.data.table()}`

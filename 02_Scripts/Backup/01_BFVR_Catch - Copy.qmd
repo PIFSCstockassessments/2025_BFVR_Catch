@@ -1,0 +1,1271 @@
+---
+title: "Deep7 non-commercial catch using the bottomfish vessel registry (BFVR)"
+author: "Marc Nadon based on Jason Helyer's idea and scripts"
+format: 
+ html:
+  embed-resources: true
+editor: visual
+page-layout: article
+---
+
+## General description
+
+This script generates estimates of non-commercial catch for Deep7 in Hawaii based on the number of vessels registered in the Bottomfish Vessel Registry (BFVR) in a given year.
+
+There are 3 major steps to do this:
+
+1\) Create a cleaned-up BFVR list, with each entry being an individual *Name/Address* x *Year* instead of a *Vessel* x *Year*, as in the original list format. Since some fishers register multiple vessels, we need to pivot *vessel_ID* into multiple columns. Another major step is then to merge this fisher x year list with the CML fisher x year list, obtained from a list of permit transactions. This merged data set will provide a list (and count) of active BF fisher by year, with each fisher classified as BF-registered and/or CML-registered.
+
+2\) Create annual distributions of species-specific mean-catch-per-vessel by county using a selection of fishers from the Fishing Reporting System (FRS) to serve as non-commercial proxies. This involves classifying all cml_no x year records as either "commercial" or "non-commercial", based on a series of filters : a) cml owner conducted a trip with a high catch in a given year, with per-trip max catch trigger points derived from MRIP "never-sell" interviews, and b) cml owner had a high catch per year, derived from Lamson (2007) mail surveys. These filters are applied at both the species level and all D7 together.
+
+3\) Sample from these per-fisher (i.e. CML no) annual catch distributions proportionally to the number of non-commercial fisher per year per county, which was obtained in step 1.
+
+## Preliminary steps
+
+This project is set up in 3 directories: 01_Data (place all data files here), 02_Scripts (place the qmd R script file here), and 03_Outputs (where final products will be saved). You need to place the following files in the 01_Data folder:
+
+-   **bfvr.csv** : a list of all vessels registered in the BFVR, starting in 2011. This is a list of transactions.
+
+-   **license_transactions.csv** : a list of all fisheries permit transaction by licensees, including CML transactions.
+
+-   **licensee.xlsx** : a list of extra information on licensees (address, phone number, etc.).
+
+-   **hawaii_zip.csv** : a list classifying Hawaii zipcodes by island and county.
+
+-   **HFY1994_2023.rds** : raw Fishing Reporting System (FRS) commercial catch data.
+
+### Load packages and define root directory
+
+```{r}
+#| warning: false
+
+require(pacman,quietly=T)
+pacman::p_load("tidyverse","data.table","this.path",
+               "readxl","janitor","flextable","ggridges","ggthemes")
+
+# Define root directory.
+root_dir <- here(..=1)
+
+#root_dir <- getwd()
+
+# Create needed output directory.
+dir.create(root_dir,"03_Outputs")
+
+# Default table format (flextable package)
+set_flextable_defaults(na_str="N/A",table.layout="autofit",line_spacing=0.5)
+
+# Quiet the summarize function messages
+options(dplyr.summarise.inform = FALSE)
+```
+
+# 1) Number of active BF fishers by year/county
+
+This first major section merges the bottomfish registry (BF) and the CML transaction list (CL) in order to calculate the number of active non-commercial BF-registered vessels in a given year.
+
+### Load the necessary data sets
+
+There are 4 relevant data sets. To establish the BFVR list, we need the Bottomfish Registry (BF) list and the Commercial Marine License transaction list (CL). Extra licensee information for the CL is available in the "licensee" file. We also need a zipcode list (ZC) to classify addresses by county. Let's load and apply some basic filters to these data files.
+
+```{r}
+BF <- fread(fs::path(root_dir,"01_Data","bfvr.csv")) %>% 
+        select(cml_no.bf=cml_no,last_name.bf=last_name,
+               first_name.bf=first_name,middle_name.bf=middle_name,
+               suffix.bf=suffix,phone.bf=phone,
+               address.bf=m_address,
+               city.bf=m_city,zipcode.bf=m_zipcode,
+               new_vessel_id.bf=bfv_id_number,transaction_action,transaction_date,
+               transaction_exp_date,cml_registr.bf=commercial)
+
+# Load transactions, filter for only CML transactions and remove longliners.
+CL <- fread(fs::path(root_dir,"01_Data","license_transactions.csv")) %>% 
+      filter(license_type=="Commercial Marine License" &
+              gear_preference_1!="Longline" &
+              gear_preference_1!="Albacore") %>% 
+      select(cml_no.cl=license_id,ha_no,uscg,captain,action,
+             transaction_date,exp_date)
+
+# Load extra information (address) from licensee file.
+LC <- suppressWarnings( 
+         readxl::read_xlsx(fs::path(root_dir,"01_Data","licensee.xlsx")) ) %>% 
+         filter(license_number_type=="Permanent") %>% 
+         select(cml_no.cl=license_number,first_name.cl=first_name,
+                last_name.cl=last_name,middle_name.cl=middle_name,
+                suffix.cl=suffix,phone1.cl=residential_phone,phone2.cl=cell_phone,
+                address.cl=residential_address,
+                city.cl=residential_city,zipcode.cl=residential_zipcode)
+         
+# Zipcode, Islands, and Counties information.
+ZC <- fread(fs::path(root_dir,"01_Data","hawaii_zip.csv")) %>% 
+       select(zipcode.zc=zipcode,county,island)
+```
+
+## Bottomfish (BF) vessel registry data set preparation
+
+Adjust vessel IDs and remove bad vessel IDs from the BF list. Only a few vessels are removed. Also remove vessel IDs starting with "NOAA-" (government boats) or "DAR-" (i.e. kayaks) vessels.
+
+```{r}
+# Change empty cells and "." to explicit NAs.
+BF <- BF %>%  mutate(across(where(is.character), ~ na_if(.,"")))
+BF <- BF %>%  mutate(across(where(is.character), ~ if_else(.x==".",NA,.x)))
+
+BF$new_vessel_id.bf <- str_remove_all(BF$new_vessel_id.bf," BF")
+
+cat("NOAA and DAR vessel removed:", 
+             nrow( BF %>% filter(str_detect(new_vessel_id.bf,"DAR|NOAA")) %>%
+                            distinct(new_vessel_id.bf) ))
+
+BF <- BF %>% filter(!str_detect(new_vessel_id.bf,"DAR|NOAA"))
+
+# Change bad vessel ID to NA.
+BF <- BF %>% mutate(new_vessel_id.bf=if_else(
+                    new_vessel_id.bf=="HA-"|
+                    new_vessel_id.bf=="HA- "|
+                    str_detect(new_vessel_id.bf,"HA-0000"),
+                    NA,new_vessel_id.bf))
+```
+
+Format years for both the transaction and expiration dates.
+
+```{r}
+BF <- BF %>% mutate(trans_year=lubridate::year(transaction_date),
+                    exp_year=lubridate::year(transaction_exp_date))
+```
+
+We want to look at both transaction and expiration dates to make sure we capture all active years. For example, a fisher could obtain his license in December, but renew it a few months late, in February of the following year (thus skipping a year). Looking at both transaction and expiration dates prevents this. Doing so does create a lot of duplicate *Vessel* x *Year* entries that we need to filter out.
+
+To fix this, we can pivot trans_year and exp_year and select a single Vessel x Year combination.
+
+```{r}
+# First pivot the transaction and expiration year into a single column.
+BF <- BF %>%
+  pivot_longer(cols=trans_year:exp_year,names_to="year_type",values_to="year")
+
+# Now only keep one vessel_id x year record
+BF <- BF %>% filter(!duplicated(cbind(new_vessel_id.bf,year))) %>% 
+         select(-year_type) %>% as.data.table()
+```
+
+Remove some records identified as duplicates and other errors.
+
+```{r}
+# Fix some wrong HA issues.
+BF[new_vessel_id.bf=="HA-2848-H BF"]$new_vessel_id.bf <- "HA-6202-K BF"
+BF[new_vessel_id.bf=="HA-6070-C BF"]$new_vessel_id.bf <- "HA-6770-C BF"
+BF[new_vessel_id.bf=="HA-0454-D BF"]$new_vessel_id.bf <- "HA-0504-D BF"
+BF[new_vessel_id.bf=="HA-6032-K BF"]$new_vessel_id.bf <- "HA-7243-H BF"
+
+BF[last_name.bf=="GALLEGOS (WRONG)"]$last_name.bf      <- "GALLEGOS"
+BF[last_name.bf=="HAHN  (WRONG HA #)"]$last_name.bf    <- "HAHN"
+BF[last_name.bf=="LEE (WRONG HA #)"]$last_name.bf      <- "LEE"
+BF[last_name.bf=="LEE (WRONG)"]$last_name.bf           <- "LEE"
+BF[last_name.bf=="MURAKAMI (WRONG HA #)"]$last_name.bf <- "MURAKAMI"
+
+# Delete records that were identified as duplicates or mistakes. These were checked individually and should be deleted.
+delete.bf <- c("DUPLICATE|DELETE|DELETE-DUP|MISTAKE DONT ACTIVATE|\\(DUP|
+               |MISTAKE|ACTIVATE|ALI \\(WRONG|BUNAO \\(WRONG|
+               |BRINGMAN \\(WRONG|HAHN \\(WRONG|CHAR \\(WRONG|
+               |GOLDMAN \\(WRONG|HANCOCK \\(WRONG|HISATAKE \\(WRONG|
+               |KALAUGHER \\(WRONG|
+               |KAWASAKI \\(WRONG|KIMURA \\(WRONG|KINI \\(WRONG|
+               |KITAMURA \\(WRONG|LAU \\(WRONG|SONE \\(WRONG|LIND \\(WRONG|
+               |MARTIN \\(WRONG|MILLS \\(WRONG|MIYAHIRA \\(WRONG|
+               |OKAMOTO \\(WRONG|OKINO \\(WRONG|
+               |SPACHNER \\(WRONG|SPIVEY \\(WRONG|TAKUSHI \\(WRONG|
+               |TAKATA \\(WRONG|
+               |TAMARRA \\(WRONG|THOMAS \\(WRONG|TODOROKI \\(WRONG|
+               |WETHERFORD \\(WRONG|YAMASAKI \\(WRONG")
+
+BF <- BF %>% filter(!str_detect(last_name.bf,delete.bf))
+```
+
+We need the BF vessel list (*vessel_id* x *year*) to be at the fisher level (*name*/*address*/*cml_no*/*vessels*/etc. x *year*). This means that name, address, cml_no, etc. need to be entered correctly, for us to successfully pivot wide *vessel_id* without creating duplicates. The following code starts by fixing the many errors and typos found in the raw BF data set.
+
+```{r}
+# Remove front and trailing blank spaces
+BF <- BF %>% mutate_if(is.character,~str_trim(.,side="both"))
+
+# Fix phone numbers (if nchar==9 due to missing char, just add a "9" at the end)
+BF <- BF %>% 
+   mutate(phone.bf=     
+           str_replace_all(phone.bf,"^1|[,]|[*]|[.]|[)]|[(]|[#]|[/]|[-]|\\s",""),
+          phone.bf=if_else(nchar(phone.bf)==7,paste0(808,phone.bf),phone.bf),
+          phone.bf=if_else(nchar(phone.bf)>10,str_sub(phone.bf,1,10),phone.bf),
+          phone.bf=if_else(nchar(phone.bf)==9,paste0(phone.bf,9),phone.bf),
+          phone.bf=if_else(nchar(phone.bf)<10,NA,phone.bf))
+
+# Fix zipcodes
+BF <- BF %>%    
+  mutate(zipcode.bf=suppressWarnings(as.numeric(str_sub(zipcode.bf,1,5)))) %>% 
+  mutate(zipcode.bf=if_else(str_length(zipcode.bf)==5,zipcode.bf,NA))
+
+# Select fields and rename appropriately. Note: middle initials were tried and there are too many mistakes and ommissions to be useful.
+BF <- BF %>% unite("name.bf",c(first_name.bf,
+                               last_name.bf,
+                               suffix.bf),sep=" ",na.rm=T)
+
+# Proper capitalization.
+BF <- BF %>% mutate(name.bf=str_to_title(name.bf),
+                    address.bf=str_to_title(address.bf),
+                    city.bf=str_to_title(city.bf))
+
+name.notes <- c(" Do Not Print Mail| Vsl Sold| Sold Vsl|
+          |Don't Print The Bf Card| Don't Mail| Sold Vsl  Do Not PrintMail|
+          | Bf Card| & Ira| Yc| Bf Card| Need To| Do Not PrintMail|
+          | Vsl")
+
+# Other general name corrections
+BF <- BF %>% 
+       mutate(name.bf=str_replace_all(name.bf,"[,]|[*]|[.]|[)]|[(]|[#]|[/]",""),
+              name.bf=str_replace_all(name.bf,"  "," "),
+              name.bf=str_replace(name.bf,"^ ",""),
+              name.bf=str_replace(name.bf,"Jr Jr","Jr"),
+              name.bf=str_replace(name.bf,"Sr Sr","Sr"),
+              name.bf=str_replace(name.bf,"Iii Iii","Iii"),
+              name.bf=str_replace(name.bf,"Mc ","Mc"),
+              name.bf=str_replace_all(name.bf,name.notes,""),
+              name.bf=str_replace_all(name.bf,"  "," "),
+              name.bf=str_replace_all(name.bf," -",""))
+
+BF <- BF %>% select(new_vessel_id.bf,year,cml_no.bf,name.bf,phone.bf,
+                    address.bf,city.bf,zipcode.bf) %>% 
+                    arrange(new_vessel_id.bf,year)
+
+# Fix general address issues.
+pobox  <- c("Po  box|Po box|Po Box|Po\\.box|P\\.o box|P\\.o Box|P\\.o\\. box|
+             |P\\.o\\. Box|P\\.o\\. Box|Po box|P\\.o box|P O Box|
+             |P\\.box|Pro Box|Pob|Po Bx|Po Bx|P\\.o\\.box|P O Box|
+             |P\\.o\\.\\. Box|Po Box|Po  Box|Pmb")
+
+BF <- BF %>% mutate(
+        address.bf=str_replace(address.bf,pattern=pobox,"P.O. Box"),
+        address.bf=str_replace(address.bf,pattern=c("Street|St."),"St"),
+        address.bf=str_replace(address.bf,pattern=c("Drive|Dr[.]"),"Dr"),
+        address.bf=str_replace(address.bf,pattern=c("Place|Pl[.]"),"Pl"),
+        address.bf=str_replace(address.bf,pattern=c("Loop|Lp[.]"),"Lp"),
+        address.bf=str_replace(address.bf,pattern=c("Lane|Ln[.]"),"Ln"),
+        address.bf=str_replace(address.bf,pattern=c("Avenue|Ave[.]|Av[.]"),"Ave"),
+        address.bf=str_replace(address.bf,pattern=c("Road|Rd[.]"),"Rd"),
+        address.bf=str_replace(address.bf,pattern=c("Highway|Hwy[.]"),"Hwy"),
+        city.bf=str_replace(city.bf,"Hiloh","Hilo"),
+        city.bf=str_replace(city.bf,"Kea’au","Keaau"),
+        address.bf=str_replace(address.bf,pattern="Kam[.]","Kam"),
+        address.bf=str_replace(address.bf,pattern="St#","St #"),
+        address.bf=str_replace(address.bf,pattern="Hc ","Hc"),
+        address.bf=str_replace(address.bf,pattern="Lepelepe","Lepe Lepe")) %>% 
+        as.data.table()
+
+# Some more specific errors
+BF <- BF %>% mutate_if(is.character,~str_trim(.,side="both"))
+BF <- BF[name.bf!="Test Test"]
+BF[name.bf=="Howard Chong Jr."]$zipcode.bf       <- 96817
+BF[name.bf=="Chadwick Llanes"]$zipcode.bf        <- 96733
+BF[name.bf=="Emsley Andrew"]$zipcode.bf          <- 96778
+BF[name.bf=="Karl Mikasa"]$zipcode.bf            <- 96813
+BF[name.bf=="Michael Kaneshiro"]$zipcode.bf      <- 96745
+BF[name.bf=="Nathan Ching"]$zipcode.bf           <- 96792
+BF[name.bf=="Nicholas Keech"]$zipcode.bf         <- 96744
+BF[name.bf=="Clifford Tsuyama"]$address.bf       <- "2778 Aheahe St"
+BF[name.bf=="Aamakaalakai Kahananui"]$name.bf    <- "Amakaalakai Kahananui"
+BF[name.bf=="Nakachi Kent 6131-F"]$name.bf       <- "Kent Nakachi"
+BF[cml_no.bf==23380]$cml_no.bf                   <- 11406
+BF[name.bf=="Charles Escue Jr"]$phone.bf         <- 8083989077
+BF[name.bf=="Hal Kamigaki"]$phone.bf             <- 8089590303
+BF[name.bf=="Travis Deniz"]$phone.bf             <- 8087693522
+BF[name.bf=="Vernon Kim"]$phone.bf               <- 8083307491
+BF[name.bf=="Todd Otake"]$phone.bf               <- 8089893347
+BF[name.bf=="Kimo Aipia"]$phone.bf               <- 8083150787
+BF[name.bf=="Daniel Ramos Jr"]$cml_no.bf         <- NA
+BF[name.bf=="James Coles Iii"]$cml_no.bf         <- NA
+BF[name.bf=="Major Day"]$cml_no.bf               <- 20891
+BF[cml_no.bf==11238]$phone.bf                    <- 8089289453
+BF[address.bf=="85-744 Lihue St"]$zipcode.bf     <- 96792
+BF[name.bf=="Nathan Ching"]$cml_no.bf            <- 4929
+BF[address.bf=="P.O. Box 17658"]$zipcode.bf      <- 96817
+BF[name.bf=="Howard Chong Jr"]$cml_no.bf         <- 23987
+BF[name.bf=="Steven Mahelona Jr"]$cml_no.bf      <- 17858
+BF[name.bf=="Dave Mori"]$cml_no.bf               <- 30370
+BF[name.bf=="Kevyn Paik"]$cml_no.bf              <- 10152
+BF[name.bf=="Henry Cho Iii"]$cml_no.bf           <- 7922
+BF[name.bf=="James Whaley"]$cml_no.bf            <- 25353
+BF[name.bf=="Clifford Serrao Jr"]$cml_no.bf      <- 5678
+BF[name.bf=="John Hahn"]$name.bf                 <- "John Hahn Jr"
+BF[name.bf=="G David Nahuina"]$name.bf           <- "George Nahuina"
+BF[name.bf=="Emsley Andrew"]$name.bf             <- "Andrew Emsley"
+BF[name.bf=="NasarioMelvin Quemado"]$name.bf     <- "Nasario Quemado"
+BF[name.bf=="Vanderkamp"]$name.bf                <- "Spencer Vanderkamp"
+BF[name.bf=="Spencer Vanderkamp"]$cml_no.bf      <- 32441
+BF[name.bf=="Spencer Vanderkamp"]$phone.bf       <- 8083417497
+BF[name.bf=="Kevin S Kasai"]$name.bf             <- "Kevin Kasai"
+BF[name.bf=="Gordon W Tamarra"]$name.bf          <- "Gordon Tamarra"
+BF[name.bf=="Gabriel Pelekane"]$name.bf          <- "Kade Pelekane"
+BF[name.bf=="Art Musso"]$name.bf                 <- "Arthur Musso"
+BF[name.bf=="Clarence Haunio"]$name.bf           <- "Clarence Hauanio"
+BF[name.bf=="Mark Arnold"]$name.bf               <- "Arnold Mark"
+BF[address.bf=="15 Kilani Ave"]$zipcode.bf       <- 96786
+BF[address.bf=="45-439 Akimala St"]$zipcode.bf   <- 96744
+BF[address.bf=="47-519 Hui Kelu St"]$zipcode.bf  <- 96744
+BF[address.bf=="73-4347 Wela Pl"]$zipcode.bf     <- 96740
+BF[name.bf=="Petty J Takahashi"]$name.bf         <- "Petty Takahashi"
+BF[address.bf=="95 682 Alohilani St"]$address.bf <- "95-682 Alohilani St"
+BF[address.bf=="87133 Kulahelela Pl"]$address.bf <- "87-133 Kulahelela Pl"
+BF[phone.bf=="8082161782"]$phone.bf              <- "8082161780"
+
+BF <- BF %>% mutate(name.bf=if_else(str_detect(name.bf,
+                                  c("Valdovinos|Valovinos")),
+                                  "Miguel Valdovinos-Garcia",name.bf)) 
+```
+
+Next, when a *cml_no* is present, let's first insure that the names entered for a given CML are identical.
+
+```{r}
+BF.names <- BF %>% filter(!is.na(cml_no.bf)) %>%  
+                  distinct(name.bf,cml_no.bf) %>% arrange(desc(name.bf))
+
+# Note: a lot of the duplicates are omitted "Sr" or "Jr" suffixes. Let's select the 2nd duplicated record, which will contain the suffixes (i.e. longer names).
+
+BF.names <- BF.names %>% filter(!duplicated(cml_no.bf))
+
+# Merge names back by cml_no.
+BF <- BF %>% left_join(BF.names,by="cml_no.bf") %>% 
+          mutate(name.bf.x=if_else(!is.na(name.bf.y),name.bf.y,name.bf.x)) %>% 
+                select(-name.bf.y) %>% rename(name.bf=name.bf.x)
+```
+
+Further, we can fill missing *cml_no* and addresses based on the most common value in a group (e.g. name/phone/year).
+
+```{r}
+get_mode <- 
+  function(x) { ux <- unique(na.omit(x)); ux[which.max(tabulate(match(x, ux)))]}
+
+# First fill missing phone numbers using names/addresses.
+BF <- BF %>% group_by(name.bf,address.bf) %>% 
+                 mutate(phone.bf=if_else(is.na(phone.bf)&
+                            !is.na(address.bf)&
+                            !is.name(name.bf),get_mode(phone.bf),phone.bf)) %>% 
+                                ungroup()
+
+# Now use phone/name to fill missing cml no. 
+BF <- BF %>% group_by(phone.bf,name.bf) %>% mutate(cml_no.bf=
+    if_else(is.na(cml_no.bf)&!is.na(phone.bf),get_mode(cml_no.bf),cml_no.bf)) %>% 
+         ungroup()
+
+# Now use address/name to fill missing cml no. 
+BF <- BF %>% group_by(address.bf,name.bf) %>% mutate(cml_no.bf=
+  if_else(is.na(cml_no.bf)&!is.na(address.bf),get_mode(cml_no.bf),cml_no.bf)) %>% 
+         ungroup()
+
+# And missing addresses using name/phone.
+BF <- BF %>% group_by(name.bf,phone.bf,year) %>% mutate(address.bf=
+  if_else(is.na(address.bf)&!is.na(phone.bf),get_mode(address.bf),address.bf)) %>%    ungroup()
+```
+
+Next, let's use phone numbers to fix address typos or to select a single address when fishers had multiple boats registered at different addresses.
+
+```{r}
+# First, we need to "summarize" down to phone and address.
+dups2 <- BF %>% ungroup() %>% 
+            group_by(year,phone.bf,address.bf,city.bf,zipcode.bf) %>%
+              summarize(N=n()) %>% select(-N) %>% filter(!is.na(phone.bf))
+
+# Now we can create a unique list of Name x Year, and check which addresses are duplicated due to typos.  
+dups2 <- dups2 %>% group_by(year,phone.bf) %>%  
+            add_count() %>% filter(n()>1) %>% arrange(phone.bf,year)
+
+# Only select 1 address (doesn't matter which one)
+correct.address <- dups2 %>% filter(!duplicated(phone.bf,year)) %>% select(-n)      
+# Now we can merge this address list with the original dataset
+BF <- BF %>% left_join(correct.address,by=join_by(year,phone.bf))
+
+BF <- BF %>% mutate(
+  address.bf.x=if_else(!is.na(address.bf.y),address.bf.y,address.bf.x),
+  city.bf.x=if_else(!is.na(city.bf.y),city.bf.y,city.bf.x),
+  zipcode.bf.x=if_else(!is.na(zipcode.bf.y),zipcode.bf.y,zipcode.bf.x))
+
+BF <- BF %>% rename(address.bf=address.bf.x,
+                    city.bf=city.bf.x,
+                    zipcode.bf=zipcode.bf.x) %>% 
+            select(-address.bf.y,-city.bf.y,-zipcode.bf.y)
+```
+
+Next, let's use *cml_no* to select addresses for fishers who likely moved within a year.
+
+```{r}
+# First need to "summarize" down to cml and address.
+dups2 <- BF %>% ungroup() %>% 
+            group_by(year,cml_no.bf,address.bf,city.bf,zipcode.bf) %>%
+              summarize(N=n()) %>% select(-N) %>% filter(!is.na(cml_no.bf))
+
+# Now we can create a unique list of Name x Year, and check which addresses are duplicated due to typos.  
+dups2 <- dups2 %>% group_by(year,cml_no.bf) %>%  
+            add_count() %>% filter(n()>1) %>% arrange(cml_no.bf,year)
+
+# Only select 1 address (doesn't matter which one)
+correct.address <- dups2 %>% filter(!duplicated(cml_no.bf,year)) %>% select(-n)      
+# Now we can merge this address list with the original dataset
+BF <- BF %>% left_join(correct.address,by=join_by(year,cml_no.bf))
+
+BF <- BF %>% mutate(
+  address.bf.x=if_else(!is.na(address.bf.y),address.bf.y,address.bf.x),
+  city.bf.x=if_else(!is.na(city.bf.y),city.bf.y,city.bf.x),
+  zipcode.bf.x=if_else(!is.na(zipcode.bf.y),zipcode.bf.y,zipcode.bf.x))
+
+BF <- BF %>% rename(address.bf=address.bf.x,
+                    city.bf=city.bf.x,
+                    zipcode.bf=zipcode.bf.x) %>% 
+            select(-address.bf.y,-city.bf.y,-zipcode.bf.y)
+```
+
+Next, let's select one phone number per year, using names/address to group fishers.
+
+```{r}
+# First need to "summarize" down to name/address and phone number.
+dups2 <- BF %>% ungroup() %>% group_by(year,address.bf,name.bf,phone.bf) %>%
+              summarize(N=n()) %>% select(-N) %>% filter(!is.na(phone.bf))
+
+# Now we can create a unique list of Name x Year, and check which addresses are duplicated due to typos.  
+dups2 <- dups2 %>% group_by(year,address.bf,name.bf) %>%  
+            add_count() %>% filter(n()>1) %>% arrange(year,name.bf)
+
+# Only select 1 name (doesn't matter which one)
+correct.phone <- dups2 %>% filter(!duplicated(name.bf,address.bf)) %>% select(-n)    
+# Now we can merge this address list with the original dataset
+BF <- BF %>% left_join(correct.phone,by=join_by(year,address.bf,name.bf))
+BF <- BF %>% mutate(phone.bf.x=if_else(!is.na(phone.bf.y),phone.bf.y,phone.bf.x))
+BF <- BF %>% rename(phone.bf=phone.bf.x) %>% select(-phone.bf.y)
+```
+
+A few remaining fishers (about 4) do not have phone numbers. Let's simply remove them, to simplify.
+
+```{r}
+cat("Removed fishers: ",length(unique(BF[is.na(BF$phone.bf),]$name.bf)))
+
+BF <- BF %>% filter(!is.na(phone.bf))
+```
+
+Let's see what remaining duplicates are left.
+
+```{r}
+dups1 <- BF %>% 
+     group_by(year,cml_no.bf,name.bf,phone.bf,address.bf) %>% summarize(C=n())
+
+# Check with names
+dups2 <- dups1 %>% group_by(name.bf,year) %>% add_count() %>% 
+              filter(n()>1) %>% arrange(name.bf,year) %>% as.data.table()
+
+# Check with phones
+dups3 <- dups1 %>% group_by(phone.bf,year) %>% add_count() %>% 
+              filter(n()>1) %>% arrange(phone.bf,year) %>% as.data.table()
+
+# Check with cml_no
+dups4 <- dups1 %>% filter(!is.na(cml_no.bf)) %>%  group_by(cml_no.bf,year) %>%          add_count() %>% filter(n()>1) %>% arrange(cml_no.bf,year) %>% as.data.table()
+```
+
+As we can see in "dups2", name-based duplicates are mainly different fishers with the same name, and can be kept separate.
+
+We can now finally pivot wide *vessel_id* by name/address/cml_no/etc. so that one record = one owner.
+
+```{r}
+# Check how many boats per owner in BF registry.
+mult.boats <- BF %>% group_by(phone.bf,year) %>% add_count() %>% 
+                      filter(n()>1) %>% arrange(phone.bf,year)
+
+max_n <- max(mult.boats$n)
+
+cat("Max # of boat per owner: ",max_n)
+
+# Pivot all vessels wide.
+BF <-  BF %>% group_by(cml_no.bf,name.bf,phone.bf,address.bf,city.bf,
+                            zipcode.bf,year) %>% 
+                   mutate(Var=factor(paste0('vessel_',row_number()),
+                                levels = paste0('vessel_',1:max_n),
+                                labels = paste0('vessel_',1:max_n),ordered = T,
+                                exclude = F)) %>% arrange(cml_no.bf, year) %>% 
+                   complete(Var = Var) %>%
+                   pivot_wider(names_from = Var,values_from=new_vessel_id.bf)
+```
+
+Add a field for BF registration (yes/no) and populate with "Y".
+
+```{r}
+BF <- BF %>% mutate(bf_registr="Y")
+
+BF <- BF %>%
+  select(name.bf,year,bf_registr,cml_no.bf,phone.bf,address.bf,city.bf,zipcode.bf,
+         contains("vessel")) %>% as.data.table()
+```
+
+## Commercial Marine License (CL) data set preparation
+
+Now we can look into the CML transaction list, to create a list of commercial fishers. This list is already at the fisher level (as opposed to BF, which started at the vessel level), so this step is much quicker.
+
+We need to first add the extra licensee information (i.e. address and zipcode) from the licensee information file. We also have "transaction date" and "expiration date", as for the BF list.
+
+```{r}
+CL <- CL %>% left_join(LC,by="cml_no.cl") %>% 
+       mutate(trans_year=lubridate::year(lubridate::mdy_hms(transaction_date)),
+              exp_year=lubridate::year(lubridate::mdy(exp_date)))
+```
+
+Change empty cells and "." to explicit NAs.
+
+```{r}
+CL <- CL %>%  mutate(across(where(is.character), ~ na_if(.,"")))
+CL <- CL %>%  mutate(across(where(is.character), ~ if_else(.x==".",NA,.x)))
+```
+
+Fix vessel ID to match naming convention and correct some bad vessel IDs.
+
+```{r}
+CL <- CL %>% mutate(ha_no=if_else(!is.na(ha_no),paste0("HA-",ha_no),NA),                          uscg=if_else(!is.na(uscg),paste0("USCG-",uscg),NA))
+
+# Change bad vessel ID to NA.
+CL <- CL %>% mutate(ha_no=if_else(
+                    ha_no=="HA-"|
+                    ha_no=="HA- "|
+                    str_detect(ha_no,"HA-0000"),
+                    NA,ha_no))
+```
+
+A few CMLs have both a USCG and a HA number. Default to HA number.
+
+```{r}
+CL <- CL %>% mutate(new_vessel_id.cl=if_else(is.na(ha_no),uscg,ha_no))
+```
+
+Remove clear errors
+
+```{r}
+# Delete records
+CL <- CL %>% filter(!str_detect(last_name.cl,"DUPLICATE|DUP |DUP,|DUP.|DELETE"))
+```
+
+Fix errors and formatting.
+
+```{r}
+# Remove all blank spaces at the beginning and end of text fields.
+CL <- CL %>% mutate_if(is.character,~str_trim(.,side="both"))
+
+# Fix zipcodes
+CL <- CL %>%
+  mutate(zipcode.cl=suppressWarnings(as.numeric(str_sub(zipcode.cl,1,5)))) %>%
+  mutate(zipcode.cl=if_else(str_length(zipcode.cl)==5,zipcode.cl,NA))
+
+# Fix phone numbers (note: if missing a number, just add a "9" at the end)
+CL <- CL %>% mutate(
+      phone1.cl=str_replace_all(phone1.cl,"\\D|^1|\\s",""),
+      phone1.cl=if_else(nchar(phone1.cl)==7,paste0(808,phone1.cl),phone1.cl),
+      phone1.cl=if_else(nchar(phone1.cl)>10,str_sub(phone1.cl,1,10),phone1.cl),
+      phone1.cl=if_else(nchar(phone1.cl)==9,paste0(phone1.cl,9),phone1.cl),
+      phone1.cl=if_else(nchar(phone1.cl)<10,NA,phone1.cl))
+
+CL <- CL %>% 
+   mutate(phone2.cl=str_replace_all(phone2.cl,"\\D|^1|\\s",""),
+          phone2.cl=if_else(nchar(phone2.cl)==7,paste0(808,phone2.cl),phone2.cl),
+          phone2.cl=if_else(nchar(phone2.cl)>10,str_sub(phone2.cl,1,10),phone2.cl),
+          phone2.cl=if_else(nchar(phone2.cl)==9,paste0(phone2.cl,9),phone2.cl),
+          phone2.cl=if_else(nchar(phone2.cl)<10,NA,phone2.cl))
+
+# Select fields and rename appropriately
+CL <- CL %>% unite("name.cl",c(first_name.cl,
+                               last_name.cl,
+                               suffix.cl),sep=" ",na.rm=T)
+
+# Add proper capitalization.
+CL <- CL %>% mutate(name.cl=str_to_title(name.cl),
+                    address.cl=str_to_title(address.cl),
+                    city.cl=str_to_title(city.cl)) %>% as.data.table()
+
+# List of things to remove from the name.cl field.
+name.notes <- c(" What\\'s Legal Name\\? Michael Or Mike| Orig 9291")
+
+# Corrections in the name field.
+CL <- CL %>% 
+       mutate(name.cl=str_replace_all(name.cl,"[,]|[*]|[.]|[)]|[(]|[#]|[/]",""),
+              name.cl=str_replace_all(name.cl,name.notes,""),
+              name.cl=str_replace_all(name.cl,"^ ",""),
+              name.cl=str_replace_all(name.cl,"  "," "),
+              name.cl=str_replace(name.cl,"Jr Jr","Jr"),
+              name.cl=str_replace(name.cl,"Sr Sr","Sr"),
+              name.cl=str_replace(name.cl,"Iii Iii","Iii"),
+              name.cl=str_replace(name.cl,"Mc ","Mc"),
+              name.cl=str_replace(name.cl,"3rd Iii","Iii"),
+              name.cl=str_replace(name.cl,"Iv Iv","Iv"))
+
+# Fix general address issues.
+pobox  <- c("Po  box|Po box|Po Box|Po\\.box|P\\.o box|P\\.o Box|P\\.o\\. box|
+             |P\\.o\\. Box|P\\.o\\. Box|Po box|P\\.o box|P O Box|
+             |P\\.box|Pro Box|Pob|Po Bx|Po Bx|P\\.o\\.box|P O Box|
+             |P\\.o\\.\\. Box|Po Box|Po  Box|Pmb")
+
+CL <- CL %>% mutate(
+        address.cl=str_replace(address.cl,pattern=pobox,"P.O. Box"),
+        address.cl=str_replace(address.cl,pattern=c("Street|St."),"St"),
+        address.cl=str_replace(address.cl,pattern=c("Drive|Dr[.]"),"Dr"),
+        address.cl=str_replace(address.cl,pattern=c("Place|Pl[.]"),"Pl"),
+        address.cl=str_replace(address.cl,pattern=c("Loop|Lp[.]"),"Lp"),
+        address.cl=str_replace(address.cl,pattern=c("Lane|Ln[.]"),"Ln"),
+        address.cl=str_replace(address.cl,pattern=c("Avenue|Ave[.]|Av[.]"),"Ave"),
+        address.cl=str_replace(address.cl,pattern=c("Road|Rd[.]"),"Rd"),
+        address.cl=str_replace(address.cl,pattern=c("Highway|Hwy[.]"),"Hwy"),
+        city.cl=str_replace(city.cl,"Hiloh","Hilo"),
+        city.cl=str_replace(city.cl,"Kea’au","Keaau"),
+        address.cl=str_replace(address.cl,pattern="Kam[.]","Kam"),
+        address.cl=str_replace(address.cl,pattern="St#","St #"),
+        address.cl=str_replace(address.cl,pattern="Hc ","Hc"),
+        address.cl=str_replace(address.cl,pattern="Lepelepe","Lepe Lepe")) %>% 
+        as.data.table()
+
+# More specific corrections.
+CL[name.cl=="Robert Sr See Sr"]$name.cl            <- "Robert See Sr"
+CL[address.cl=="1576 Kanalui St"]$zipcode.cl       <- 96816
+CL[cml_no.cl==28690]$zipcode.cl                    <- 96792
+CL[cml_no.cl==37279]$cml_no.cl                     <- 6300
+```
+
+Remove foreign longliners that were not successfully filtered by original *gear_preference* filter.
+
+```{r}
+live.aboard <- c("Lives On Boat|Lives On Vessel|Fishing Vessel")
+CL <- CL %>% filter(!(str_detect(address.cl,live.aboard)&is.na(zipcode.cl))) 
+```
+
+As we did for the BF registry, we can pivot trans_year and exp_year and select a single cml_no x Year combination.
+
+```{r}
+# First pivot the transaction and expiration year into a single column. 
+CL <- CL %>%
+   pivot_longer(cols=trans_year:exp_year,names_to="year_type",values_to="year") %>%       filter(!is.na(year)) %>% as.data.table() %>% arrange(name.cl,year)
+
+# Now only keep one cml_no x year record 
+CL <- CL %>% filter(!duplicated(cbind(cml_no.cl,year))) %>% select(-year_type)
+```
+
+Add a field for CML registration (yes/no) and populate with "Y".
+
+```{r}
+CL <- CL %>% mutate(cml_registr.cl="Y")
+```
+
+Only keep years after 2011, since that's when the BF registry properly starts.
+
+```{r}
+CL <- CL %>% filter(year>=2011)
+```
+
+Select key variables and rename them where necessary
+
+```{r}
+CL <- CL %>% select(new_vessel_id.cl,cml_no.cl,year,
+                    name.cl,phone1.cl,phone2.cl,address.cl,
+                    city.cl,zipcode.cl,cml_registr.cl)
+```
+
+## Merge the Bottomfish Registry (BF) and the Commercial Fishing Licence (CL) lists together
+
+We will now try to merge the BF and CL data sets to create a list of all active fishers by year, with CML and BF registration information for all of them.
+
+Let's first insure *name.bf* and *name.cl* are identical between the data sets when there is a successful match on *cml_no*.
+
+```{r}
+# Create lists of name + cml_no.
+BF.names <- BF %>% filter(!is.na(cml_no.bf)) %>% distinct(name.bf,cml_no.bf)
+CL.names <- CL %>% distinct(name.cl,cml_no.cl)
+
+# Merge those lists by cml_no. Also look at mismatched names.
+full.names <- left_join(BF.names,CL.names,by=join_by(cml_no.bf==cml_no.cl))
+full.names.mis <- full.names %>% filter(name.bf!=name.cl)
+
+# Note: We see some cml_no.bf that don't match the CL list. Those are mainly fishers stating "longliner/albacore" as their primary gear, and are likely recreationally bottomfishing on the side.
+
+# To resolve ommitted suffix or other errors, let's simply select the longest name.
+full.names <- full.names %>% mutate(
+               name=if_else(nchar(name.bf)>=nchar(name.cl),name.bf,name.cl)) %>%                   rename(cml_no=cml_no.bf) %>%  select(name,cml_no)
+
+# Update these names in both data sets.
+BF <- BF %>% left_join(full.names,by=join_by(cml_no.bf==cml_no)) %>% 
+           mutate(name.bf=if_else(!is.na(name),name,name.bf)) %>% select(-name)
+
+CL <- CL %>% left_join(full.names,by=join_by(cml_no.cl==cml_no)) %>% 
+           mutate(name.cl=if_else(!is.na(name),name,name.cl)) %>% select(-name)
+```
+
+We can now attempt to merge the BF and CL together, by fisher. The following chunk is a series of joins, starting with cml-to-cml join, followed by other fields, to try to merge as many CL and BF records.
+
+```{r}
+# Let's rename year to be data set specific.
+BF <- BF %>% rename(year.bf=year)
+CL <- CL %>% rename(year.cl=year)
+
+# First, try to Join on cml_no x year and keep records not merged, for now.
+D1.a <- inner_join(BF,CL,by=join_by(cml_no.bf==cml_no.cl,year.bf==year.cl),keep=T) 
+BF.a <- anti_join(BF,CL,by=join_by(cml_no.bf==cml_no.cl,year.bf==year.cl))
+CL.a <- anti_join(CL,BF,by=join_by(cml_no.cl==cml_no.bf,year.cl==year.bf))
+
+cat("We merged ",nrow(D1.a)," records using cml_no.")
+ 
+# Next, try to merge these using names x vessel 1 x year.
+D1.b <- inner_join(BF.a,CL.a,by=join_by(
+           name.bf==name.cl,vessel_1==new_vessel_id.cl,year.bf==year.cl),
+           keep=T,na_matches="never") 
+BF.b <- anti_join(BF.a,CL.a,by=join_by(
+           name.bf==name.cl,vessel_1==new_vessel_id.cl,year.bf==year.cl),
+           na_matches="never")
+CL.b <- anti_join(CL.a,BF.a,by=join_by(
+           name.cl==name.bf,new_vessel_id.cl==vessel_1,year.cl==year.bf),
+           na_matches="never")
+
+cat("We merged another ",nrow(D1.b)," records using vessel_1.")
+
+# Next, try to merge these using names x vessel 2 x year.
+D1.c <- inner_join(BF.b,CL.b,by=join_by(
+           name.bf==name.cl,vessel_2==new_vessel_id.cl,year.bf==year.cl),keep=T,
+           na_matches="never") 
+BF.c <- anti_join(BF.b,CL.b,by=join_by(
+           name.bf==name.cl,vessel_2==new_vessel_id.cl,year.bf==year.cl),
+           na_matches="never")
+CL.c <- anti_join(CL.b,BF.b,by=join_by(
+           name.cl==name.bf,new_vessel_id.cl==vessel_2,year.cl==year.bf),
+           na_matches="never")
+
+cat("We merged another ",nrow(D1.c)," records using vessel_2.")
+
+# Next, try to merge on name x primary phone number x year.
+D1.d <- inner_join(BF.c,CL.c,by=join_by(
+           name.bf==name.cl,phone.bf==phone1.cl,year.bf==year.cl),keep=T,
+           na_matches="never") 
+BF.d <- anti_join(BF.c,CL.c,by=join_by(
+           name.bf==name.cl,phone.bf==phone1.cl,year.bf==year.cl),
+           na_matches="never")
+CL.d <- anti_join(CL.c,BF.c,by=join_by(
+           name.cl==name.bf,phone1.cl==phone.bf,year.cl==year.bf),
+           na_matches="never")
+
+cat("We merged another ",nrow(D1.d)," records using phone_no1.")
+
+# Next, try to merge on name x secondary phone number x year.
+D1.e <- inner_join(BF.d,CL.d,by=join_by(
+           name.bf==name.cl,phone.bf==phone2.cl,year.bf==year.cl),keep=T,
+           na_matches="never") 
+BF.e <- anti_join(BF.d,CL.d,by=join_by(
+           name.bf==name.cl,phone.bf==phone2.cl,year.bf==year.cl),
+           na_matches="never")
+CL.e <- anti_join(CL.d,BF.d,by=join_by(
+           name.cl==name.bf,phone2.cl==phone.bf,year.cl==year.bf),
+           na_matches="never")
+
+cat("We merged another ",nrow(D1.e)," records using phone_no2.")
+
+# Let's put the dataset back together.
+D1.merged <- rbind(D1.a,D1.b,D1.c,D1.d,D1.e)
+D1        <- rbind(D1.merged,BF.e,CL.e,fill=T)
+
+cat("We now have ",nrow(D1)," total fisher x year records.")
+```
+
+Look at BF records with a cml_no that did not actually match with the CL list.
+
+```{r}
+D1.mismatch <- D1 %>% filter(!is.na(cml_no.bf) & is.na(name.cl))
+```
+
+The reason for the mismatches is that some fishers appears on the BF list with a CML number earlier than they show up on the CML transaction list. This is likely caused by the fisher info in the BFVR list being back-filled for every year, even when a CML wasn't active. Therefore, [we need to simply ignore the CML information contained in the BFVR data]{.underline} when there isn't a CML x Year match in the CL list (i.e. take the active CML info only from the CL table).
+
+To help deal with these discrepancies, let's create some global name/address/etc. fields (to keep everything separated and clean) and fill them from the CL table if not present in the BF table (and vice-versa).
+
+```{r}
+# Create those global fields.
+D1 <- D1 %>% mutate(year=year.bf,
+                    name=name.bf,
+                    address=address.bf,
+                    city=city.bf,
+                    zipcode=zipcode.bf,
+                    cml_registr=cml_registr.cl)
+
+# Fill in the NA with "N" where appropriate.
+D1 <- D1 %>% 
+  mutate(bf_registr=if_else(is.na(bf_registr),"N",bf_registr),
+         cml_registr=if_else(is.na(cml_registr),"N",cml_registr))
+
+# Take the cml_no that came from the CL list only (see note above chunk).
+D1 <- D1 %>% mutate(cml_no=if_else(cml_registr=="N",NA,cml_no.cl))
+
+# Fill missing addresses using the CL list.
+D1 <- D1 %>% 
+       mutate(year=if_else(is.na(name),year.cl,year),
+              name=if_else(is.na(name),name.cl,name),
+              address=if_else(is.na(address),address.cl,address),
+              city=if_else(is.na(city),city.cl,city),
+              zipcode=if_else(is.na(zipcode),zipcode.cl,zipcode),
+              zipcode=
+  if_else((zipcode<96701|zipcode>96898)&!is.na(zipcode.cl),zipcode.cl,zipcode))
+```
+
+Let's add *County* and *Island* info and clean up the data by getting rid of columns we don't need anymore.
+
+```{r}
+D2 <- D1 %>% left_join(ZC,join_by(zipcode==zipcode.zc)) %>% 
+             select(name,year,bf_registr,cml_registr,
+                    cml_no,address,city,zipcode,county,island,
+                    new_vessel_id.cl,contains("vessel")) %>% 
+                    arrange(name,year)
+```
+
+We need to merge the vessel info that came from CL with the info that came from the BF list, with the vessel listed in the CL list going to "vessel_1" and the other vessels following the BF table order.
+
+```{r}
+# This code re-order and organizes the vessel list.
+D2 <- D2 %>% mutate(
+        
+        vessel_1a=case_when(
+                    is.na(new_vessel_id.cl) ~ vessel_1,
+                    !is.na(new_vessel_id.cl) ~ new_vessel_id.cl),
+             
+        vessel_2a=case_when(
+                    vessel_1!=vessel_1a ~ vessel_1,
+                    vessel_2!=vessel_1a ~ vessel_2),
+             
+        vessel_3a=case_when(
+                    vessel_2!=vessel_1a&vessel_2!=vessel_2a ~ vessel_2,
+                    vessel_3!=vessel_1a                     ~ vessel_3))
+    
+     # Note: below is only necessary if some fishers had 4 vessels registered.          #   vessel_4a=case_when(
+     #   vessel_3!=vessel_1a&vessel_3!=vessel_2a&vessel_3!=vessel_3a ~ vessel_3,
+     #   vessel_4!=vessel_1a                                        ~ vessel_4))
+
+D2 <- D2 %>% select(-(vessel_1:vessel_3),-new_vessel_id.cl) %>% 
+             rename(vessel_1=vessel_1a,vessel_2=vessel_2a,
+                    vessel_3=vessel_3a)#,vessel_4=vessel_4a)
+```
+
+Now we should have unique CML x Year entries (D2.check1 should have zero entries).
+
+```{r}
+D2.check1 <- D2 %>% filter(!is.na(cml_no)) %>%  group_by(cml_no,year) %>%                                    add_count() %>% filter(n()>1)
+```
+
+Also, let's remove the fishers with no vessels (i.e. CML holders fishing from shore only).
+
+```{r}
+D2 <- D2 %>% filter(!is.na(vessel_1))
+```
+
+Check how many *county* information are missing, mainly due to out-of-state addresses. After fixing any errors, distribute out-of-state fishers by county, based on per-county BF registration proportions .
+
+```{r}
+# Check records without county information.
+D2.check2 <- D2 %>% filter(is.na(county))
+
+# Using cml_no, find the county information if it is present for other years.
+D2 <- D2 %>% group_by(cml_no) %>% mutate(county=
+            if_else(is.na(county)&!is.na(cml_no),get_mode(county),county)) %>% 
+             ungroup()
+
+# Do the same using thing using name.
+D2 <- D2 %>% group_by(name) %>% mutate(county=
+            if_else(is.na(county)&!is.na(name),get_mode(county),county)) %>% 
+             ungroup()
+
+# Check again
+D2.check2 <- D2 %>% filter(is.na(county))
+
+# D2 is now a list of all year-by-year active fishers in Hawaii since 2011, with information on BF and CML status. Let's export this for future use.
+writexl::write_xlsx(D2,fs::path(root_dir,"03_Outputs","Hawaii Fishers.xlsx"))
+```
+
+Now, for the out-of-state addresses, calculate prop. of BF by county and assign counties proportionally. If we simply filtered these addresses out, we would get a wrong BF count.
+
+```{r}
+prp <- D2 %>% filter(!is.na(county)&bf_registr=="Y") %>% 
+                 group_by(county) %>% summarize(n=n()) %>% 
+                   mutate(prop=n/sum(n))
+
+name.list     <- D2.check2 %>% distinct(name) %>% arrange(name) %>% as.data.table()
+prp$nrow      <- round(prp$prop*nrow(name.list),0)
+prp$end       <- cumsum(prp$nrow)
+prp$start     <- prp$end-prp$nrow+1
+
+name.list$county <- "county"
+for(i in 1:4) name.list[prp[i,]$start:prp[i,]$end]$county <- prp[i,]$county 
+
+# Merge info back into original data set.
+D2 <- D2 %>% left_join(name.list,by="name") %>% 
+              mutate(county.x=if_else(is.na(county.x),county.y,county.x)) %>% 
+               rename(county=county.x) %>% select(-county.y)
+
+# Final check (D2.check2 should have zero records).
+D2.check2 <- D2 %>% filter(is.na(county))
+```
+
+Finally, let's calculate the number of NC D7 fishers by County.
+
+```{r}
+D3 <- D2 %>% filter(cml_registr=="N"&bf_registr=="Y"&year<2025) %>% 
+         group_by(year,county) %>% summarize(n_nc_bf_fishers=n())
+
+ggplot(data=D3,aes(x=year,y=n_nc_bf_fishers,fill=county))+
+      labs(x="Year",y="Non-commercial BF fishers (count)")+
+      geom_bar(stat="identity",position="stack")+
+      theme_classic(base_size = 14)
+
+ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","NC_BF_count.png"),
+       width=8,height=4)
+```
+
+In table format.
+
+```{r}
+D4 <- D3 %>% pivot_wider(names_from=county,values_from=n_nc_bf_fishers) %>%
+               mutate(total=rowSums(across(where(is.numeric))))
+
+D4 %>% as.data.frame() %>% flextable()
+
+write_csv(D4,file=fs::path(root_dir,"03_Outputs","NC_BF_count.csv"))
+```
+
+# 2) Annual catch per vessel
+
+This second major section uses the Fishing Reporting System (FRS) commercial catch data, applies filters to trip and annual catches in order to obtain a non-commercial proxy catch data set. From this subset of fishers, we can obtain annual Deep7 NC catch distributions grouped by county.
+
+## Enter the limits that define non-commercial proxies in the FRS
+
+These limits are derived from the MRIP fishing trip interviews (2004-2022) and represent the 99th percentile of catches, when the catches are not zero.
+
+```{r}
+# Per-trip limits (MRIP interviews 2004-2022)
+d7_lbs_per_trip     <- 94
+uku_lbs_per_trip    <- 50
+paka_lbs_per_trip   <- 70
+onaga_lbs_per_trip  <- 108
+ehu_lbs_per_trip    <- 40
+kale_lbs_per_trip   <- 28
+gindai_lbs_per_trip <- 21
+  
+# Per-year limits (Lamson 2007, mail surveys, "never sell BF")
+d7_lbs_per_year     <- 486
+uku_lbs_per_year    <- 300
+paka_lbs_per_year   <- 213
+onaga_lbs_per_year  <- 150
+ehu_lbs_per_year    <- 180
+kale_lbs_per_year   <- 83
+gindai_lbs_per_year <- 82
+
+```
+
+## Load the necessary data set
+
+We need the FRS catch reports, in addition to the fisher list from the first section.
+
+```{r}
+FS <- read_rds(fs::path(root_dir,"01_Data","HFY1994_2023.rds")) %>%
+         mutate(year=year(FISHED_DATE)) %>% filter(year>=2011) %>% 
+         as.data.table()
+```
+
+Select FRS columns and rename certain variables.
+
+```{r}
+F1 <- FS %>%  select(cml_no.fs=FISHER_LIC_FK,
+                     year,
+                     fished_date=FISHED_DATE,
+                     area_fk=AREA_FK,
+                     gear_fk=GEAR_FK,
+                     hours=HOURS_FISHED,
+                     num_gear=NUM_GEAR,
+                     landing_port_fk=LANDING_PORT_FK,
+                     fisher_fname=FISHER_FNAME,
+                     fisher_lname=FISHER_LNAME,
+                     species_fk=SPECIES_FK,
+                     num_kept=NUM_KEPT,
+                     lbs_kept=LBS_KEPT,
+                     lbs_sold=LBS_SOLD)
+
+# Only select Deep-sea handline trip (>98% of D7 are caught on this gear)
+F1 <- F1 %>% filter(gear_fk==3)
+
+F1[species_fk==36]$species_fk <- 21 #Set ehu code 36 to new code 21
+F1$species_fk <- paste0("s",F1$species_fk)
+```
+
+Join catch data with fisher information from step 1.
+
+```{r}
+F1 <- F1 %>% left_join(D2,by=join_by(cml_no.fs==cml_no,year))
+
+cat("A small number of records didn't match: ",nrow(unique(F1[is.na(county)])))
+
+F1 <- F1 %>% filter(!is.na(county))
+
+# NOTE: there are about 50 cml_no with no county info. Checking transaction list, these are CML that didn't have a vessel_id listed... and said Captain==N, but still reported D7 ("no vessel" cmls  were filtered early on in Step 1, thus the lack of match). What to do with these?
+```
+
+Create unique identifiers for trips and sum catch by species
+
+```{r}
+F1 <- F1 %>% mutate(trip_id=paste0(cml_no.fs,"_",fished_date)) %>% 
+  group_by(year,cml_no.fs,cml_registr,bf_registr,county,trip_id,species_fk) %>%
+       summarize(lbs_kept=sum(lbs_kept))
+```
+
+Calculate the aggregated catch per trip
+
+```{r}
+# Pivot the trip catch in lbs by species.
+F2 <- F1 %>%
+  pivot_wider(names_from=species_fk,values_from=lbs_kept,values_fill=0) %>%
+      as.data.table()
+
+# Deep7 catch
+F2$d7 <- F2$s15+F2$s17+F2$s19+F2$s21+F2$s22+F2$s58+F2$s97
+
+# All species
+F2$allsp <- rowSums(F2[,7:ncol(F2)])
+
+# Drop all other species columns except D7
+F2 <- F2 %>% select(year:trip_id,s20,s15,s17,s19,s21,s22,s58,s97,d7,allsp)
+```
+
+Classify all CMLs as either "commercial" (C) or "non-commercial" (NC), based on the per-trip limits defined previously.
+
+```{r}
+# All trips classified as non-commercial as a starting point.
+F2$trip_type <- "nc_trip"
+
+# This classification will change to commercial if catches go higher than one of these trigger points.
+F2[d7  > d7_lbs_per_trip|
+   s17 > kale_lbs_per_trip| 
+   s19 > paka_lbs_per_trip| 
+   s21 > ehu_lbs_per_trip|
+   s22 > onaga_lbs_per_trip|
+   s97 > gindai_lbs_per_trip| 
+   s20 > uku_lbs_per_trip 
+   ]$trip_type <- "comm_trip"
+
+# Create a separate data set to see trip stats by county and annual catch
+F2a <- F2 %>% select(year,cml_no.fs,county,trip_id,trip_type) %>% 
+             group_by(year,cml_no.fs,county,trip_type) %>%
+             summarize(n=n()) %>%
+             pivot_wider(names_from=trip_type,values_from=n,values_fill=0) %>% 
+             as.data.table()
+
+# Classify CML x year combinations into fisher types.
+F2a$fisher_type               <- "Comm"
+F2a[comm_trip==0]$fisher_type <- "NC"
+
+# Summary
+F2b <- F2a %>% group_by(year) %>% 
+         summarize(nc_trip=sum(nc_trip),comm_trip=sum(comm_trip)) 
+
+ggplot(data=F2b,aes(x=year))+geom_line(aes(y=nc_trip),col="blue")+
+  geom_line(aes(y=comm_trip),col="red")+ylab("# of trips")
+
+ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","Trips_all.png"),
+       height=4,width=8)
+```
+
+Quick check on the distribution of trip catches for all BF + caught a D7 fishers.
+
+```{r}
+F2 %>% filter(d7!=0&bf_registr=="Y"&year==2023) %>% ggplot(aes(x=d7))+
+          geom_histogram(breaks=c(seq(0,500,by=10),max(F3$d7)),
+                         position="identity")+
+          labs(x="Deep7 catch per trip (lbs)",y="Number of trips")+
+          coord_cartesian(xlim=c(0,480))+theme_bw(base_size = 15)
+
+ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","Comm_Trip_2024_D7.png"),
+       height=5,width=8)
+```
+
+Let's sum the trip catch by *year* and *cml_no*, and merge the fisher information from the step above with this data set.
+
+```{r}
+F3 <- F2 %>% group_by(year,cml_no.fs,bf_registr,cml_registr,county) %>%                         summarize_if(is.numeric,sum)
+
+F3 <- F3 %>% left_join(F2a,join_by(cml_no.fs,year,county)) %>%
+              relocate(nc_trip:fisher_type,.after=cml_no.fs) %>% as.data.table()
+```
+
+Now we can apply the annual catch filters derived from Lamson (2007).
+
+```{r}
+# This classification will change to commercial if catches go higher than one of these trigger points.
+
+#cat("Number of NC fishers, pre-filter: ",nrow(F3[fisher_type=="NC"]),"\n")
+
+#F3[d7  > d7_lbs_per_year|
+#   s17 > kale_lbs_per_year| 
+#   s19 > paka_lbs_per_year| 
+#   s21 > ehu_lbs_per_year|
+#   s22 > onaga_lbs_per_year|
+#   s97 > gindai_lbs_per_year| 
+#   s20 > uku_lbs_per_year 
+#   ]$fisher_type <- "comm_trip"
+
+#cat("Number of NC fishers, post-filter: ",nrow(F3[fisher_type=="NC"]))
+```
+
+An important step is to decide which fishers to remove from this data set. One filter we discussed was to remove fishers that did not catch a single D7 during a year. Another discussion is to just keep fishers registered on the BFVR.
+
+```{r}
+cat("Prop. caught D7: ",round(nrow(F3[d7>0])/nrow(F3),2),"\n")
+cat("Prop. caught D7 and BF registered: ",
+             round(nrow(F3[d7>0&bf_registr=="Y"])/nrow(F3),2))
+```
+
+Important step: decide which filters to apply. Let's start with keep fishers D7\>0 and BF registered only.
+
+```{r}
+F3 <- F3 %>% filter(d7!=0&bf_registr=="Y")
+
+#F3 <- F3 %>% filter(d7!=0)
+
+#NOTE: the difference between these two filters appear to be about 29,000 lb vs 30,000 lb yearly NC D7 average catch. Not as big of a deal as originally thought.
+```
+
+Now let's only keep the "non-commercial" fisher proxies and clean up the data.
+
+```{r}
+F4 <- F3 %>% filter(fisher_type=="NC") %>% 
+              select(year,cml_no.fs,county,6:allsp) %>% 
+                arrange(year,county) 
+```
+
+# 3) Generate annual non-commercial catch distribution
+
+Now that we have 1) the number of active non-commercial BF fisher by year, and 2) a proxy data set of annual catch per "non-commercial" fisher, we can sample "n" times from that annual catch data set, where "n" is the number of non-comm. BF fishers in a specific *year* and *county*. This will generate a final distribution of non-commercial catches by year.
+
+```{r}
+# Add the # of NC vessels by year x County to the catch data
+F4 <- F4 %>% left_join(D3,by=join_by(year,county)) %>% 
+                relocate(n_nc_bf_fishers,.after=county)
+
+# Check the number of fishers to sample from in each county x year with the number of active NC D7 fishers from Step 1.
+num.frs  <- as.data.table(table(F4$year,F4$county)) %>% 
+            rename(year=V1,county=V2,n_frs=N) %>% mutate(year=as.numeric(year))
+chck.num <- D3 %>% inner_join(num.frs,by=join_by(year,county))
+
+write_csv(chck.num,file=fs::path(root_dir,"03_Outputs","Frs_vs_BFVR.csv"))
+
+# Resample the catch data by the number of vessels in a year X county block. Since there are often less fishers to sample than the n target, we need to sample with replacement. 
+Results <- list()
+for(i in 1:1000){
+ aSample <- F4 %>% group_by(year,county) %>% 
+                    sample_n(n_nc_bf_fishers[1],replace=T) %>% 
+                      add_column(iter=i) %>% relocate(iter,.before=year)
+ Results <- append(Results,list(aSample))
+}
+
+Results <- rbindlist(Results)
+```
+
+Sum fisher-specific annual catches by iteration.
+
+```{r}
+Final <- Results %>% group_by(iter,year,county) %>%
+           summarize_at(vars(s20:allsp),sum)
+```
+
+Plot results.
+
+```{r}
+# Simple line plot
+Final %>% group_by(year,county) %>% summarize_at(vars(s20:allsp),mean) %>% 
+    ggplot(aes(x=year,y=d7))+
+      geom_line()+geom_point()+
+      facet_wrap(~county)+theme_bw(base_size=16)+
+      theme(axis.text.x=element_text(angle=45,hjust=1))+
+      labs(x="Year",y="Deep7 non-commercial catch (lbs)")
+
+suppressMessages(ggsave(last_plot(),
+  file=fs::path(root_dir,"03_Outputs","NC_county_simple.png"),width=8,height=6))
+
+# Box plot
+ggplot(data=Final,aes(x=factor(year),y=d7))+
+  geom_boxplot(fill="lightblue",alpha=0.6,outlier.size=0.6)+
+  facet_wrap(~county)+theme_minimal()+
+  theme(axis.text.x=element_text(angle=45,hjust=1))+
+  labs(x="Year",y="Deep7 non-commercial catch (lbs)")
+
+# Ridge plot
+suppressMessages(print( 
+      ggplot(data=Final,aes(y=factor(year),x=d7))+
+      geom_density_ridges(scale=1,fill="lightblue",
+                      quantile_lines=T,quantiles=2,
+                      rel_min_height=0.0001)+
+      theme_minimal(base_size=13)+
+      theme(axis.text.x=element_text(angle=45,hjust=1),
+            strip.text = element_text(size = 14))+
+      coord_flip()+labs(y="Year",x="Deep7 non-commercial catch (lbs)")+
+      facet_wrap(~county,ncol=2)
+))
+
+suppressMessages(ggsave(last_plot(),
+      file=fs::path(root_dir,"03_Outputs","NC_county.png"),width=8,height=6))
+```
+
+Finally, sum county-level catches by year and generate catch tables.
+
+```{r}
+Final.b <- Final %>% group_by(iter,year) %>% summarize_at(vars(s20:allsp),sum)
+Final.c <- Final.b %>% group_by(year) %>% summarize_at(vars(s20:allsp),mean)
+
+# Some per-species summary
+Final.b.sp <- Final.b %>% pivot_longer(
+                cols=s20:s97,names_to="species",values_to="lbs_caught") %>%
+                  filter(species %in% c("s19","s21","s22")) %>%
+                     select(iter,year,species,lbs_caught)
+
+# Some extra summary for the Deep7 group
+Final.d <- Final.b %>% group_by(year) %>%
+                  summarize(d7.meanlog=mean(log(d7)),
+                            d7.sdlog=sd(log(d7)),
+                            d7.mean=mean(d7))
+
+write_csv(Final.d,file=fs::path(root_dir,"03_Outputs","NC_BF_all.csv"))
+```
+
+Some figures and comparison with the CML catch.
+
+```{r}
+# Species figure
+suppressMessages(print( 
+      ggplot(data=Final.b.sp,aes(y=factor(year),x=lbs_caught))+
+      geom_density_ridges(scale=1,fill="lightblue",
+                      quantile_lines=T,quantiles=2,
+                      rel_min_height=0.0001)+
+      theme_minimal(base_size=13)+
+      theme(axis.text.x=element_text(angle=45,hjust=1),
+            strip.text = element_text(size = 14))+
+      coord_flip()+labs(y="Year",x="Non-commercial catch (lbs)")+
+      facet_wrap(~species,ncol=3)
+      ))
+
+# Deep 7 figure
+suppressMessages(print(ggplot()+
+      geom_density_ridges(data=Final.b,aes(y=factor(year),x=d7),
+                          scale=1,fill="lightblue",
+                          quantile_lines=T,quantiles=2,
+                          rel_min_height=0.0001)+
+      theme_minimal(base_size=14)+
+      theme(axis.text.x=element_text(angle=45,hjust=1))+
+      coord_flip()+labs(y="Year",x="Deep7 non-commercial catch (lbs)")
+))
+suppressMessages(ggsave(last_plot(),width=8,height=5,
+              file=fs::path(root_dir,"03_Outputs","NC_BF_all.png")))
+
+# Simple Deep 7 figure
+# Simple line plot
+Final.b %>% group_by(year) %>% summarize_at(vars(s20:allsp),mean) %>% 
+    ggplot(aes(x=year,y=d7))+
+      geom_line()+geom_point()+
+      theme_bw(base_size=16)+ylim(0,50000)+
+      scale_x_continuous(breaks=seq(2011,2023,by=1))+
+      theme(axis.text.x=element_text(angle=45,hjust=1))+
+      labs(x="Year",y="Deep7 non-commercial catch (lbs)")
+
+suppressMessages(ggsave(last_plot(),
+  file=fs::path(root_dir,"03_Outputs","NC_simple.png"),width=8,height=6))
+
+
+
+              
+```
