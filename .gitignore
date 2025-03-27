@@ -2,6 +2,10 @@
 01_Data
 03_Outputs
 
+## VS Code
+*.json
+
+
 ## R
 
 # History files
