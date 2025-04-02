@@ -3,8 +3,8 @@ library(bslib)
 library(tidyverse)
 library(data.table)
 library(ggthemes)
-#library(DT)
-library(viridisLite)
+library(plotly)
+#library(viridisLite)
 #library(here)
 #root_dir <- here(..=1)
 
@@ -17,7 +17,7 @@ SP.id <- QT[,1:3]
 FC <- fread(file.path("..","03_Outputs", "Fisher_counts.csv")) %>%
         filter(cml_registr == "N")
 
-F2 <- fread(file.path("..","03_Outputs","FRS_trips.csv"))
+F2 <- fread(file.path("..","03_Outputs","FRS_trips_annon.csv"))
 
 # Read in CML catches and tidy
 cml <- fread(file.path("..", "03_Outputs", "CML_catches.csv"))
@@ -31,8 +31,6 @@ cml.all <- cml %>%
           type = "CML") %>% 
   select(c("year", "catch", "type"))
 
-# Create a new column for future data manipulation
-F2$trip_type <- 0
 
 # Define a common theme with improved font sizes
 my_theme <- theme_minimal() +
@@ -54,9 +52,9 @@ ui <- page_sidebar(
     h4("Analysis Parameters"),
     
     numericInput("prop_caught_d7", 
-                 "What proportion of Bottomfish registered 
+                 "What percentage of Bottomfish registered 
                  boats catch Deep7?", 
-                 value = 1, min = 0, max = 1, step = 0.1), 
+                 value = 100, min = 0, max = 100, step = 10), 
     
     radioButtons("only_bf_registered", 
                  "Should we only include BF-registered fishers?", 
@@ -69,10 +67,6 @@ ui <- page_sidebar(
                 "99%" = "q99", "Maximum" = "max"), 
                 selected = "99%"),
     
-    numericInput("iterations", 
-                 "How many iterations of resampling should we run?", 
-                 value = 50, min = 10, max = 500, step = 10),
-    
     actionButton("run_analysis", "Run Analysis", class = "btn-primary"),
 
           # SEPARATOR
@@ -82,27 +76,25 @@ ui <- page_sidebar(
     h4("Plotting Options"),
 
     # Add your new inputs here that won't be part of run_analysis
-    numericInput("prop_underreported", 
-                 "What proportion of the commercial catch is underreported?", 
+    numericInput("prop_unreported", 
+                 "What proportion of the commercial catch is unreported?", 
                  value = 0, min = 0, max = 1, step = 0.1),
     
     # Add more display options as needed
     #checkboxInput("stack_bars", "Stack bars in plots", value = TRUE),
     
   ),
-
-
-    
+  
    layout_columns(
     card(
         card_header("Deep7 Non-Commercial Catch by Year"),
-        plotOutput("combined_plot", height = "400px")
+        plotOutput("combined_plot") 
     )
   ),
   layout_columns(
     card(
       card_header("Deep7 Non-Commercial Catch by Species"),
-      plotOutput("species_plot", height = "400px")
+      plotOutput("species_plot")
     )
   )
  
@@ -128,17 +120,19 @@ data_prep <- eventReactive(
     # Apply the correction related to the assumed # of BF registered fishers 
     # catching at least one deep7 in any given year
     FC_sim <- FC %>% 
-        mutate(n_bf_fishers = n_bf_fishers * input$prop_caught_d7)
+        mutate(n_bf_fishers = n_bf_fishers * input$prop_caught_d7/100)
 
 ## TODO: add Lamson option (radio button, MRIP/Lamson/both)
-
-    F2$trip_type[F2$d7 > QT_sim[QT_sim$sp_frs_id == "d7", "value"] |
-                F2$s17 > QT_sim[QT_sim$sp_frs_id == "s17", "value"] |
-                F2$s19 > QT_sim[QT_sim$sp_frs_id == "s19", "value"] |
-                F2$s21 > QT_sim[QT_sim$sp_frs_id == "s21", "value"] |
-                F2$s22 > QT_sim[QT_sim$sp_frs_id == "s22", "value"] |
-                F2$s97 > QT_sim[QT_sim$sp_frs_id == "s97", "value"] |
-                F2$s20 > QT_sim[QT_sim$sp_frs_id == "s20", "value"]] <- 1
+    # Create a new column for future data manipulation
+    F2$trip_type <- 0
+    F2[d7  > QT_sim[sp_frs_id=="d7"]$value|
+      s17 > QT_sim[sp_frs_id=="s17"]$value| 
+      s19 > QT_sim[sp_frs_id=="s19"]$value| 
+      s21 > QT_sim[sp_frs_id=="s21"]$value|
+      s22 > QT_sim[sp_frs_id=="s22"]$value|
+      s97 > QT_sim[sp_frs_id=="s97"]$value| 
+      s20 > QT_sim[sp_frs_id=="s20"]$value 
+      ]$trip_type <- 1
 
      # Sum catches to annual-level per fisher
     F3 <- F2 %>% 
@@ -184,13 +178,11 @@ F3 <- reactive({
 })
 
 
-# Create a reactive trigger that changes whenever data_prep changes
-  # or when simulation parameters change
+# Create a reactive trigger that changes whenever run 
+# analysis button is clicked
 sim_trigger <- reactive({
 # Dependencies: filtered data and simulation inputs
 list(
-    #data_prep(),         # Trigger when filtered data changes
-    #input$iterations,    # Trigger when sample size changes
     input$run_analysis      # Also allow manual triggering
 )
 # Return the current time as a convenient non-NULL value
@@ -209,9 +201,9 @@ run_sim <- eventReactive(sim_trigger(), {
     set.seed(1234)
     # Sample "n" times from the annual catch data set, where "n" is the number of
     # non-commercial BF fishers in a given Year x County.
-    for (i in 1:input$iterations) {
+    for (i in 1:200) {
       # Update progress bar
-      incProgress(1/input$iterations, detail = paste("Iteration", i, "of", input$iterations))
+      incProgress(1/200, detail = paste("Iteration", i, "of", 200))
       
       aSample <- f3_data %>% # Use f3_data instead of F3
         group_by(year, county) %>% 
@@ -267,10 +259,9 @@ Final.all.sp <- reactive({
   display_options <- reactive({
     # These inputs can change without triggering the simulation
     list(
-      prop_underreported = input$prop_underreported
+      prop_unreported = input$prop_unreported
     )
   })
-
 
 # Plot Species-specific results
 output$species_plot <- renderPlot({
@@ -282,36 +273,41 @@ options <- display_options()
 non_commercial_data <- Final.all.sp() %>%
   group_by(year, species) %>% 
   summarise(catch = quantile(lbs_caught, .5)) %>% 
-  mutate(type = "BFVR Non-Commercial")
+  mutate(type = "BFVR Non-Commercial") %>%
+    filter(year < 2023)
   
-# Decide whether to include underreported CML based on proportion
-if (options$prop_underreported > 0) {
-  # Create data with both regular CML and underreported CML
+# Decide whether to include unreported CML based on proportion
+if (options$prop_unreported > 0) {
+  # Create data with both regular CML and unreported CML and NC
   local_cml_all_sp <- cml.all.sp %>%
-    mutate(catch = catch * (1 + options$prop_underreported),
-            type = "Underreported CML") %>% 
+    mutate(catch = (catch * options$prop_unreported) + (non_commercial_data$catch * options$prop_unreported),
+            type = "Unreported") %>% 
     bind_rows(cml.all.sp)
   
   # Combine all data
   plot_data <- bind_rows(non_commercial_data, local_cml_all_sp)
 } else {
-  # Only include the regular CML data (no underreported)
+  # Only include the regular CML data (no unreported)
   plot_data <- bind_rows(non_commercial_data, cml.all.sp)
 }
 
 all_years <- sort(unique(plot_data$year)) 
 
 plot_data %>% 
-left_join(SP.id, by = c("species" = "sp_frs_id"), 
-relationship = "many-to-many") %>% 
-filter(species != "d7") %>%
-ggplot()+
-      geom_bar(aes(x = year, y=catch, group = type, fill = type), position="stack", stat="identity") +
-      my_theme +
-      labs(y="Year",x="Catch (lbs)")+
-      facet_wrap(~common_name,ncol=3,scales = "free_y") +
-      scale_fill_brewer(palette = "Set2") +
-      scale_x_continuous(breaks = all_years) 
+  left_join(SP.id, by = c("species" = "sp_frs_id"), 
+  relationship = "many-to-many") %>% 
+  mutate(type = factor(type, levels = c("CML", "Unreported", "BFVR Non-Commercial"))) %>% 
+  filter(species != "d7" & year < 2023) %>%
+  ggplot()+
+  geom_bar(aes(x = year, y=catch, group = type, fill = type), position="stack", stat="identity") +
+  my_theme +
+  labs(y="Year",x="Catch (lbs)")+
+  facet_wrap(~common_name,ncol=2,scales = "free_y") +
+  scale_fill_manual(values = c("CML" = "#FC8D62", 
+                            "Unreported" = "#8DA0CB", 
+                            "BFVR Non-Commercial" = "#66C2A5")) +
+  scale_x_continuous(breaks = all_years) 
+
 })
 
 # Create a total Deep7 plot
@@ -324,34 +320,43 @@ options <- display_options()
   non_commercial_data <- Final.all() %>%
     group_by(year) %>% 
     summarise(catch = quantile(d7, .5)) %>% 
-    mutate(type = "BFVR Non-Commercial")
+    mutate(type = "BFVR Non-Commercial") %>%
+    filter(year < 2023)
   
-  # Decide whether to include underreported CML based on proportion
-  if (options$prop_underreported > 0) {
-    # Create data with both regular CML and underreported CML
+  # Decide whether to include unreported CML based on proportion
+  if (options$prop_unreported > 0) {
+    # Create data with both regular CML and unreported CML and NC
     local_cml_all <- cml.all %>%
-      mutate(catch = catch * options$prop_underreported,
-             type = "Underreported CML") %>% 
+    mutate(catch = (catch * options$prop_unreported) + (non_commercial_data$catch * options$prop_unreported), 
+    type = "Unreported") %>%
       bind_rows(cml.all)
     
     # Combine all data
     plot_data <- bind_rows(non_commercial_data, local_cml_all)
   } else {
-    # Only include the regular CML data (no underreported)
-    plot_data <- bind_rows(non_commercial_data, cml.all)
+    # Only include the regular CML data (no unreported)
+    plot_data <- bind_rows(non_commercial_data, cml.all) 
   }
 
 # Get all unique years from the data to use as breaks
 all_years <- sort(unique(plot_data$year))
 
-ggplot(plot_data)+
-    geom_bar(aes(x = year, y=catch, group = type, fill = type), position="stack", stat="identity") +
-    my_theme +
-    theme(axis.text.x=element_text(angle=45,hjust=1),
-            strip.text = element_text(size = 14))+
-    scale_fill_brewer(palette = "Set2") +
-    scale_x_continuous(breaks = all_years) + 
-    labs(x="Year",y="Catch (lbs)")
+plot_data %>%
+  mutate(type = factor(type, levels = c("CML", "Unreported", "BFVR Non-Commercial"))) %>% 
+  ggplot() +
+  geom_bar(aes(x = year, y=catch, group = type, fill = type), position="stack", stat="identity") +
+  my_theme +
+  theme(axis.text.x=element_text(angle=45,hjust=1),
+          strip.text = element_text(size = 14))+
+  scale_fill_manual(values = c("CML" = "#FC8D62", 
+                            "Unreported" = "#8DA0CB", 
+                            "BFVR Non-Commercial" = "#66C2A5")) +
+  scale_x_continuous(breaks = all_years) + 
+  labs(x="Year",y="Catch (lbs)")
+
+# ggplotly(p, tooltip = "catch") %>%
+#     layout(hoverlabel = list(bgcolor = "white", 
+#                             font = list(family = "Arial", size = 12)))
 
 })
 
