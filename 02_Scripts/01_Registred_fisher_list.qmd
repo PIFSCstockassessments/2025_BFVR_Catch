@@ -7,39 +7,21 @@ page-layout: article
 
 # General description
 
-This script merges the Hawaii Bottomfish Vessel Registry (BFVR) and the Commercial
-Marine License registry (CML) into a single list of registered boat-based fishers
-(i.e. fishers either on the BFVR or CML registries). The data inputs are license
-transaction records with dates provided by the State of Hawaii (renewal,
-registration, etc.) for both the BFVR and the CML registries:
+This script merges the Hawaii Bottomfish Vessel Registry (BFVR) and the Commercial Marine License registry (CML) into a single list of registered boat-based fishers (i.e. fishers either on the BFVR or CML registries). The data inputs are license transaction records with dates provided by the State of Hawaii (renewal, registration, etc.) for both the BFVR and the CML registries:
 
-The script first cleans up those transaction lists, pivots "Vessel ID" to multiple
-columns in the BFVR list in order to convert from a vessel-based list to a
-fisher-based list (the CML registry is already a fisher-based list). The script
-then does a fisher-to-fisher merge of those lists iteratively using : CML no,
-vessel ID, and phone number.
+The script first cleans up those transaction lists, pivots "Vessel ID" to multiple columns in the BFVR list in order to convert from a vessel-based list to a fisher-based list (the CML registry is already a fisher-based list). The script then does a fisher-to-fisher merge of those lists iteratively using : CML no, vessel ID, and phone number.
 
-The script provides some basic statistics and figures regarding the number of
-fishers active in Hawaii, by year. The main output is the "Hawaii Registered
-Fishers.csv" file, which provides a complete universe of registered fishers by
-year in Hawaii (this list can be further merged with the DOBOR vessel registry, to
-obtain a complete list of boat-based fishers in the state).
+The script provides some basic statistics and figures regarding the number of fishers active in Hawaii, by year. The main output is the "Hawaii Registered Fishers.csv" file, which provides a complete universe of registered fishers by year in Hawaii (this list can be further merged with the DOBOR vessel registry, to obtain a complete list of boat-based fishers in the state).
 
 ## Preliminary steps
 
-This project is set up in 3 directories: 01_Data (place all data files here),
-02_Scripts (place the qmd R script file here), and 03_Outputs (where final
-products will be saved). You need to place the following files in the 01_Data
-folder:
+This project is set up in 3 directories: 01_Data (place all data files here), 02_Scripts (place the qmd R script file here), and 03_Outputs (where final products will be saved). You need to place the following files in the 01_Data folder:
 
--   **bfvr.csv** : a list of all vessels registered in the BFVR, starting in 2011.
-    This is a list of transactions.
+-   **bfvr.csv** : a list of all vessels registered in the BFVR, starting in 2011. This is a list of transactions.
 
--   **license_transactions.csv** : a list of all fisheries permit transaction by
-    licensees, including CML transactions.
+-   **license_transactions.csv** : a list of all fisheries permit transaction by licensees, including CML transactions.
 
--   **licensee.xlsx** : a list of extra information on licensees (address, phone
-    number, etc.).
+-   **licensee.xlsx** : a list of extra information on licensees (address, phone number, etc.).
 
 -   **hawaii_zip.csv** : a list classifying Hawaii zipcodes by island and county.
 
@@ -73,7 +55,7 @@ BF <- fread(fs::path(root_dir,"01_Data","bfvr.csv")) %>%
                first_name.bf=first_name,middle_name.bf=middle_name,
                suffix.bf=suffix,phone.bf=phone,
                address.bf=m_address,
-               city.bf=m_city,zipcode.bf=m_zipcode,
+               city.bf=m_city,state.bf=m_state,zipcode.bf=m_zipcode,
                new_vessel_id.bf=bfv_id_number,transaction_action,transaction_date, 
                transaction_exp_date,cml_registr.bf=commercial)
 
@@ -93,7 +75,8 @@ LC <- suppressWarnings(
                 last_name.cl=last_name,middle_name.cl=middle_name,
                 suffix.cl=suffix,phone1.cl=residential_phone,phone2.cl=cell_phone,
                 address.cl=residential_address,
-                city.cl=residential_city,zipcode.cl=residential_zipcode)
+                city.cl=residential_city,state.cl=residential_state,
+                zipcode.cl=residential_zipcode)
          
 # Zipcode, Islands, and Counties information.
 ZC <- fread(fs::path(root_dir,"01_Data","hawaii_zip.csv")) %>% 
@@ -102,9 +85,7 @@ ZC <- fread(fs::path(root_dir,"01_Data","hawaii_zip.csv")) %>%
 
 # Cleaning the Bottomfish Vessel Registry (BF)
 
-Adjust vessel IDs and remove bad vessel IDs from the BF list. Only a few vessels
-are removed. Also remove vessel IDs starting with "NOAA-" (government boats) or
-"DAR-" (i.e. kayaks) vessels.
+Adjust vessel IDs and remove bad vessel IDs from the BF list. Only a few vessels are removed. Also remove vessel IDs starting with "NOAA-" (government boats) or "DAR-" (i.e. kayaks) vessels.
 
 ```{r}
 # Change empty cells and "." to explicit NAs.
@@ -134,15 +115,9 @@ BF <- BF %>% mutate(trans_year=lubridate::year(transaction_date),
                     exp_year=lubridate::year(transaction_exp_date))
 ```
 
-We want to look at both transaction and expiration dates to make sure we capture
-all active years. For example, a fisher could obtain his license in December, but
-renew it a few months late, in February of the following year (thus skipping a
-year). Looking at both transaction and expiration dates prevents this. Doing so
-does create a lot of duplicate *Vessel* x *Year* entries that we need to filter
-out.
+We want to look at both transaction and expiration dates to make sure we capture all active years. For example, a fisher could obtain his license in December, but renew it a few months late, in February of the following year (thus skipping a year). Looking at both transaction and expiration dates prevents this. Doing so does create a lot of duplicate *Vessel* x *Year* entries that we need to filter out.
 
-To fix this, we can pivot trans_year and exp_year and select a single Vessel x
-Year combination.
+To fix this, we can pivot trans_year and exp_year and select a single Vessel x Year combination.
 
 ```{r}
 # First pivot the transaction and expiration year into a single column.
@@ -188,11 +163,7 @@ delete.bf <- c("DUPLICATE|DELETE|DELETE-DUP|MISTAKE DONT ACTIVATE|\\(DUP|
 BF <- BF %>% filter(!str_detect(last_name.bf,delete.bf))
 ```
 
-We need the BF vessel list (*vessel_id* x *year*) to be at the fisher level
-(*name*/*address*/*cml_no*/*vessels*/etc. x *year*). This means that name,
-address, cml_no, etc. need to be entered correctly, for us to successfully pivot
-wide *vessel_id* without creating duplicates. The following code starts by fixing
-the many errors and typos found in the raw BF data set.
+We need the BF vessel list (*vessel_id* x *year*) to be at the fisher level (*name*/*address*/*cml_no*/*vessels*/etc. x *year*). This means that name, address, cml_no, etc. need to be entered correctly, for us to successfully pivot wide *vessel_id* without creating duplicates. The following code starts by fixing the many errors and typos found in the raw BF data set.
 
 ```{r}
 # Remove front and trailing blank spaces
@@ -242,7 +213,7 @@ BF <- BF %>%
               name.bf=str_replace_all(name.bf," -",""))
 
 BF <- BF %>% select(new_vessel_id.bf,year,cml_no.bf,name.bf,phone.bf,
-                    address.bf,city.bf,zipcode.bf) %>% 
+                    address.bf,city.bf,state.bf,zipcode.bf) %>% 
                     arrange(new_vessel_id.bf,year)
 
 # Fix general address issues.
@@ -253,17 +224,17 @@ pobox  <- c("Po  box|Po box|Po Box|Po\\.box|P\\.o box|P\\.o Box|P\\.o\\. box|
 
 BF <- BF %>% mutate(
         address.bf=str_replace(address.bf,pattern=pobox,"P.O. Box"),
-        address.bf=str_replace(address.bf,pattern=c("Street|St."),"St"),
-        address.bf=str_replace(address.bf,pattern=c("Drive|Dr[.]"),"Dr"),
-        address.bf=str_replace(address.bf,pattern=c("Place|Pl[.]"),"Pl"),
-        address.bf=str_replace(address.bf,pattern=c("Loop|Lp[.]"),"Lp"),
-        address.bf=str_replace(address.bf,pattern=c("Lane|Ln[.]"),"Ln"),
-        address.bf=str_replace(address.bf,pattern=c("Avenue|Ave[.]|Av[.]"),"Ave"),
-        address.bf=str_replace(address.bf,pattern=c("Road|Rd[.]"),"Rd"),
-        address.bf=str_replace(address.bf,pattern=c("Highway|Hwy[.]"),"Hwy"),
+        address.bf=str_replace(address.bf,pattern=c("Street|St\\."),"St"),
+        address.bf=str_replace(address.bf,pattern=c("Drive|Dr\\."),"Dr"),
+        address.bf=str_replace(address.bf,pattern=c("Place|Pl\\."),"Pl"),
+        address.bf=str_replace(address.bf,pattern=c("Loop|Lp\\."),"Lp"),
+        address.bf=str_replace(address.bf,pattern=c("Lane|Ln\\."),"Ln"),
+        address.bf=str_replace(address.bf,pattern=c("Avenue|Ave\\.|Av\\."),"Ave"),
+        address.bf=str_replace(address.bf,pattern=c("Road|Rd\\."),"Rd"),
+        address.bf=str_replace(address.bf,pattern=c("Highway|Hwy\\."),"Hwy"),
         city.bf=str_replace(city.bf,"Hiloh","Hilo"),
         city.bf=str_replace(city.bf,"Kea’au","Keaau"),
-        address.bf=str_replace(address.bf,pattern="Kam[.]","Kam"),
+        address.bf=str_replace(address.bf,pattern="Kam\\.","Kam"),
         address.bf=str_replace(address.bf,pattern="St#","St #"),
         address.bf=str_replace(address.bf,pattern="Hc ","Hc"),
         address.bf=str_replace(address.bf,pattern="Lepelepe","Lepe Lepe")) %>% 
@@ -330,8 +301,7 @@ BF <- BF %>% mutate(name.bf=if_else(str_detect(name.bf,
                                   "Miguel Valdovinos-Garcia",name.bf)) 
 ```
 
-Next, when a *cml_no* is present, let's first insure that the names entered for a
-given CML are identical.
+Next, when a *cml_no* is present, let's first insure that the names entered for a given CML are identical.
 
 ```{r}
 BF.names <- BF %>% filter(!is.na(cml_no.bf)) %>%  
@@ -347,8 +317,7 @@ BF <- BF %>% left_join(BF.names,by="cml_no.bf") %>%
                 select(-name.bf.y) %>% rename(name.bf=name.bf.x)
 ```
 
-Further, we can fill missing *cml_no* and addresses based on the most common value
-in a group (e.g. name/phone/year).
+Further, we can fill missing *cml_no* and addresses based on the most common value in a group (e.g. name/phone/year).
 
 ```{r}
 get_mode <- 
@@ -377,13 +346,12 @@ BF <- BF %>% group_by(name.bf,phone.bf,year) %>% mutate(address.bf=
       ungroup()
 ```
 
-Next, let's use phone numbers to fix address typos or to select a single address
-when fishers had multiple boats registered at different addresses.
+Next, let's use phone numbers to fix address typos or to select a single address when fishers had multiple boats registered at different addresses.
 
 ```{r}
 # First, we need to "summarize" down to phone and address.
 dups2 <- BF %>% ungroup() %>% 
-            group_by(year,phone.bf,address.bf,city.bf,zipcode.bf) %>%
+            group_by(year,phone.bf,address.bf,city.bf,state.bf,zipcode.bf) %>%
               summarize(N=n()) %>% select(-N) %>% filter(!is.na(phone.bf))
 
 # Now we can create a unique list of Name x Year, and check which addresses are
@@ -399,21 +367,22 @@ BF <- BF %>% left_join(correct.address,by=join_by(year,phone.bf))
 BF <- BF %>% mutate(
   address.bf.x=if_else(!is.na(address.bf.y),address.bf.y,address.bf.x),
   city.bf.x=if_else(!is.na(city.bf.y),city.bf.y,city.bf.x),
+  state.bf.x=if_else(!is.na(state.bf.y),state.bf.y,state.bf.x),
   zipcode.bf.x=if_else(!is.na(zipcode.bf.y),zipcode.bf.y,zipcode.bf.x))
 
 BF <- BF %>% rename(address.bf=address.bf.x,
                     city.bf=city.bf.x,
+                    state.bf=state.bf.x,
                     zipcode.bf=zipcode.bf.x) %>% 
-            select(-address.bf.y,-city.bf.y,-zipcode.bf.y)
+            select(-address.bf.y,-city.bf.y,-state.bf.y,-zipcode.bf.y)
 ```
 
-Next, let's use *cml_no* to select addresses for fishers who likely moved within a
-year.
+Next, let's use *cml_no* to select addresses for fishers who likely moved within a year.
 
 ```{r}
 # First need to "summarize" down to cml and address.
 dups2 <- BF %>% ungroup() %>% 
-            group_by(year,cml_no.bf,address.bf,city.bf,zipcode.bf) %>%
+            group_by(year,cml_no.bf,address.bf,city.bf,state.bf,zipcode.bf) %>%
               summarize(N=n()) %>% select(-N) %>% filter(!is.na(cml_no.bf))
 
 # Now we can create a unique list of Name x Year, and check which addresses are
@@ -429,16 +398,17 @@ BF <- BF %>% left_join(correct.address,by=join_by(year,cml_no.bf))
 BF <- BF %>% mutate(
   address.bf.x=if_else(!is.na(address.bf.y),address.bf.y,address.bf.x),
   city.bf.x=if_else(!is.na(city.bf.y),city.bf.y,city.bf.x),
+  state.bf.x=if_else(!is.na(state.bf.y),state.bf.y,state.bf.x),
   zipcode.bf.x=if_else(!is.na(zipcode.bf.y),zipcode.bf.y,zipcode.bf.x))
 
 BF <- BF %>% rename(address.bf=address.bf.x,
                     city.bf=city.bf.x,
+                    state.bf=state.bf.x,
                     zipcode.bf=zipcode.bf.x) %>% 
-            select(-address.bf.y,-city.bf.y,-zipcode.bf.y)
+            select(-address.bf.y,-city.bf.y,-state.bf.y,-zipcode.bf.y)
 ```
 
-Next, let's select one phone number per year, using names/address to group
-fishers.
+Next, let's select one phone number per year, using names/address to group fishers.
 
 ```{r}
 # First need to "summarize" down to name/address and phone number.
@@ -458,8 +428,7 @@ BF <- BF %>% mutate(phone.bf.x=if_else(!is.na(phone.bf.y),phone.bf.y,phone.bf.x)
 BF <- BF %>% rename(phone.bf=phone.bf.x) %>% select(-phone.bf.y)
 ```
 
-A few remaining fishers (about 4) do not have phone numbers. Let's simply remove
-them, to simplify.
+A few remaining fishers (about 4) do not have phone numbers. Let's simply remove them, to simplify.
 
 ```{r}
 cat("Removed fishers: ",length(unique(BF[is.na(BF$phone.bf),]$name.bf)))
@@ -487,11 +456,9 @@ dups4 <- dups1 %>% filter(!is.na(cml_no.bf)) %>%  group_by(cml_no.bf,year) %>%
           as.data.table()
 ```
 
-As we can see in "dups2", name-based duplicates are mainly different fishers with
-the same name, and can be kept separate.
+As we can see in "dups2", name-based duplicates are mainly different fishers with the same name, and can be kept separate.
 
-We can now finally pivot wide *vessel_id* by name/address/cml_no/etc. so that one
-record = one owner.
+We can now finally pivot wide *vessel_id* by name/address/cml_no/etc. so that one record = one owner.
 
 ```{r}
 # Check how many boats per owner in BF registry.
@@ -504,7 +471,7 @@ cat("Max # of boat per owner: ",max_n)
 
 # Pivot all vessels wide.
 BF <-  BF %>% group_by(cml_no.bf,name.bf,phone.bf,address.bf,city.bf,
-                            zipcode.bf,year) %>% 
+                        state.bf,zipcode.bf,year) %>% 
                    mutate(Var=factor(paste0('vessel_',row_number()),
                                 levels = paste0('vessel_',1:max_n),
                                 labels = paste0('vessel_',1:max_n),ordered = T,
@@ -518,20 +485,16 @@ Add a field for BF registration (yes/no) and populate with "Y".
 ```{r}
 BF <- BF %>% mutate(bf_registr="Y")
 
-BF <- BF %>%
-  select(name.bf,year,bf_registr,cml_no.bf,phone.bf,address.bf,city.bf,zipcode.bf,
+BF <- BF %>% select(name.bf,year,bf_registr,cml_no.bf,phone.bf,
+                    address.bf,city.bf,zipcode.bf,state.bf,
          contains("vessel")) %>% as.data.table()
 ```
 
 # Cleaning the Commercial Marine License (CL) registry
 
-Now we can look into the CML transaction list, to create a list of commercial
-fishers. This list is already at the fisher level (as opposed to BF, which started
-at the vessel level), so this step is much quicker.
+Now we can look into the CML transaction list, to create a list of commercial fishers. This list is already at the fisher level (as opposed to BF, which started at the vessel level), so this step is much quicker.
 
-We need to first add the extra licensee information (i.e. address and zipcode)
-from the licensee information file. We also have "transaction date" and
-"expiration date", as for the BF list.
+We need to first add the extra licensee information (i.e. address and zipcode) from the licensee information file. We also have "transaction date" and "expiration date", as for the BF list.
 
 ```{r}
 CL <- CL %>% left_join(LC,by="cml_no.cl") %>% 
@@ -656,16 +619,14 @@ CL[cml_no.cl==28690]$zipcode.cl                    <- 96792
 CL[cml_no.cl==37279]$cml_no.cl                     <- 6300
 ```
 
-Remove foreign longliners that were not successfully filtered by original
-*gear_preference* filter.
+Remove foreign longliners that were not successfully filtered by original *gear_preference* filter.
 
 ```{r}
 live.aboard <- c("Lives On Boat|Lives On Vessel|Fishing Vessel")
 CL <- CL %>% filter(!(str_detect(address.cl,live.aboard)&is.na(zipcode.cl))) 
 ```
 
-As we did for the BF registry, we can pivot trans_year and exp_year and select a
-single cml_no x Year combination.
+As we did for the BF registry, we can pivot trans_year and exp_year and select a single cml_no x Year combination.
 
 ```{r}
 # First pivot the transaction and expiration year into a single column. 
@@ -696,16 +657,14 @@ Select key variables and rename them where necessary
 ```{r}
 CL <- CL %>% select(new_vessel_id.cl,cml_no.cl,year,
                     name.cl,phone1.cl,phone2.cl,address.cl,
-                    city.cl,zipcode.cl,cml_registr.cl)
+                    city.cl,state.cl,zipcode.cl,cml_registr.cl)
 ```
 
 # Merging the Bottomfish Registry (BF) and the Commercial Fishing Licence (CL)registry
 
-We will now try to merge the BF and CL data sets to create a list of all active
-fishers by year, with CML and BF registration information for all of them.
+We will now try to merge the BF and CL data sets to create a list of all active fishers by year, with CML and BF registration information for all of them.
 
-Let's first insure *name.bf* and *name.cl* are identical between the data sets
-when there is a successful match on *cml_no*.
+Let's first insure *name.bf* and *name.cl* are identical between the data sets when there is a successful match on *cml_no*.
 
 ```{r}
 # Create lists of name + cml_no.
@@ -734,9 +693,7 @@ CL <- CL %>% left_join(full.names,by=join_by(cml_no.cl==cml_no)) %>%
            mutate(name.cl=if_else(!is.na(name),name,name.cl)) %>% select(-name)
 ```
 
-We can now attempt to merge the BF and CL together, by fisher. The following chunk
-is a series of joins, starting with cml-to-cml join, followed by other fields, to
-try to merge as many CL and BF records.
+We can now attempt to merge the BF and CL together, by fisher. The following chunk is a series of joins, starting with cml-to-cml join, followed by other fields, to try to merge as many CL and BF records.
 
 ```{r}
 # Let's rename year to be data set specific.
@@ -815,16 +772,9 @@ Look at BF records with a cml_no that did not actually match with the CL list.
 D1.mismatch <- D1 %>% filter(!is.na(cml_no.bf) & is.na(name.cl))
 ```
 
-The reason for the mismatches is that some fishers appears on the BF list with a
-CML number earlier than they show up on the CML transaction list. This is likely
-caused by the fisher info in the BFVR list being back-filled for every year, even
-when a CML wasn't active. Therefore, [we need to simply ignore the CML information
-contained in the BFVR data]{.underline} when there isn't a CML x Year match in the
-CL list (i.e. take the active CML info only from the CL table).
+The reason for the mismatches is that some fishers appears on the BF list with a CML number earlier than they show up on the CML transaction list. This is likely caused by the fisher info in the BFVR list being back-filled for every year, even when a CML wasn't active. Therefore, [we need to simply ignore the CML information contained in the BFVR data]{.underline} when there isn't a CML x Year match in the CL list (i.e. take the active CML info only from the CL table).
 
-To help deal with these discrepancies, let's create some global name/address/etc.
-fields (to keep everything separated and clean) and fill them from the CL table if
-not present in the BF table (and vice-versa).
+To help deal with these discrepancies, let's create some global name/address/etc. fields (to keep everything separated and clean) and fill them from the CL table if not present in the BF table (and vice-versa).
 
 ```{r}
 # Create those global fields.
@@ -832,6 +782,7 @@ D1 <- D1 %>% mutate(year=year.bf,
                     name=name.bf,
                     address=address.bf,
                     city=city.bf,
+                    state=state.bf,
                     zipcode=zipcode.bf,
                     cml_registr=cml_registr.cl)
 
@@ -849,25 +800,28 @@ D1 <- D1 %>%
               name=if_else(is.na(name),name.cl,name),
               address=if_else(is.na(address),address.cl,address),
               city=if_else(is.na(city),city.cl,city),
-              zipcode=if_else(is.na(zipcode),zipcode.cl,zipcode),
-              zipcode=
-  if_else((zipcode<96701|zipcode>96898)&!is.na(zipcode.cl),zipcode.cl,zipcode))
+              state=if_else(is.na(state),state.cl,state),
+              zipcode=if_else(is.na(zipcode),zipcode.cl,zipcode))
+
+# For out-of-state addresses, use Hawaii ones, if present.
+D1 <- D1 %>% 
+      mutate(address=if_else(state!="HI"&state.cl=="HI",address.cl,address),
+             city=if_else(state!="HI"&state.cl=="HI",city.cl,city),
+             zipcode=if_else(state!="HI"&state.cl=="HI",zipcode.cl,zipcode),
+             state=if_else(state!="HI"&state.cl=="HI",state.cl,state))
 ```
 
-Let's add *County* and *Island* info and clean up the data by getting rid of
-columns we don't need anymore.
+Let's add *County* and *Island* info and clean up the data by getting rid of columns we don't need anymore.
 
 ```{r}
 D2 <- D1 %>% left_join(ZC,join_by(zipcode==zipcode.zc)) %>% 
              select(name,year,bf_registr,cml_registr,
-                    cml_no,address,city,zipcode,county,island,
+                    cml_no,address,city,state,zipcode,county,island,
                     new_vessel_id.cl,contains("vessel")) %>% 
                     arrange(name,year)
 ```
 
-We need to merge the vessel info that came from CL with the info that came from
-the BF list, with the vessel listed in the CL list going to "vessel_1" and the
-other vessels following the BF table order.
+We need to merge the vessel info that came from CL with the info that came from the BF list, with the vessel listed in the CL list going to "vessel_1" and the other vessels following the BF table order.
 
 ```{r}
 # This code re-order and organizes the vessel list.
@@ -902,16 +856,13 @@ D2.check1 <- D2 %>% filter(!is.na(cml_no)) %>%  group_by(cml_no,year) %>%
                                     add_count() %>% filter(n()>1)
 ```
 
-Also, let's remove the fishers with no vessels (i.e. CML holders fishing from
-shore only).
+Also, let's remove the fishers with no vessels (i.e. CML holders fishing from shore only).
 
 ```{r}
 D2 <- D2 %>% filter(!is.na(vessel_1))
 ```
 
-Check how many *county* information are missing, mainly due to out-of-state
-addresses. After fixing any errors, distribute out-of-state fishers by county,
-based on per-county BF registration proportions .
+Check how many *county* information are missing, mainly due to out-of-state addresses. After fixing any errors, distribute out-of-state fishers by county, based on per-county BF registration proportions .
 
 ```{r}
 # Check records without county information.
@@ -922,7 +873,7 @@ D2 <- D2 %>% group_by(cml_no) %>% mutate(county=
             if_else(is.na(county)&!is.na(cml_no),get_mode(county),county)) %>% 
              ungroup()
 
-# Do the same using thing using name.
+# Do the same thing using name.
 D2 <- D2 %>% group_by(name) %>% mutate(county=
             if_else(is.na(county)&!is.na(name),get_mode(county),county)) %>% 
              ungroup()
@@ -933,8 +884,7 @@ D2.check2 <- D2 %>% filter(is.na(county))
 
 ### Export the complete list of registered fishers
 
-D2 is now a list of all year-by-year active fishers in Hawaii since 2011, with
-information on BF and CML status. Let's export this for future use.
+D2 is now a list of all year-by-year active fishers in Hawaii since 2011, with information on BF and CML status. Let's export this for future use.
 
 ```{r}
 writexl::write_xlsx(D2,fs::path(root_dir,
@@ -943,8 +893,7 @@ writexl::write_xlsx(D2,fs::path(root_dir,
 
 ### Calculating the number of fishers by year and county
 
-We first need to assign the mainland fishers (i.e. unknown Hawaii county) to
-counties, proportionally.
+We first need to assign the mainland fishers (i.e. unknown Hawaii county) to counties, proportionally.
 
 ```{r}
 # Check records without county information.
