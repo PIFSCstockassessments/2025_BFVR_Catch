@@ -11,11 +11,7 @@ editor: visual
 page-layout: article
 ---
 
-This script is to obtain the distribution of Deep7 and total per-trip catches for
-non-commercial fishers. To do so, we acquired the MRIP catch interviews from 2003
-to 2022 where the question "Do you ever sell your catch?" was recorded. This allow
-us to filter catch interviews conducted by pure recreational fishers and explore
-the distribution of their catch.
+This script is to obtain the distribution of Deep7 and total per-trip catches for non-commercial fishers. To do so, we acquired the MRIP catch interviews from 2003 to 2022 where the question "Do you ever sell your catch?" was recorded. This allow us to filter catch interviews conducted by pure recreational fishers and explore the distribution of their catch.
 
 ## Preliminary steps
 
@@ -27,7 +23,7 @@ pacman::p_load("tidyverse","data.table","this.path","readxl")
 root_dir <- here(..=1)
 
 # Quiet the summarize function messages, 
-# add to 16 digits to load the interview_id correctly.
+# add to 16 digits to load the trip_id correctly.
 options(dplyr.summarise.inform = FALSE,digits=16)
 ```
 
@@ -37,8 +33,8 @@ We obtained the MRIP interviews from Hongguang Ma.
 
 ```{r}
 IT <-fread(
-        fs::path(root_dir,"01_Data","MRIP never sell interviews.csv")) %>% 
-         select(interview_id=ID_CODE,sp_mrip_id=SP_CODE,num_caught=catch) %>% 
+        fs::path(root_dir,"01_Data","MRIP never sell interviews - Trips.csv")) %>% 
+         select(trip_id=TRIP_CODE,sp_mrip_id=SP_CODE,num_caught=catch) %>% 
            mutate(sp_mrip_id=as.character(sp_mrip_id))
 
 SP <- fread(fs::path(root_dir,"01_Data","mrip_mean_weights.csv")) %>% 
@@ -52,20 +48,20 @@ Let's merge the species information
 IT <- IT %>% left_join(SP,by="sp_mrip_id") 
 ```
 
-Let's split up the information contained in the *interview_id*.
+Let's split up the information contained in the *trip_id*.
 
 ```{r}
 # Remove empty spaces.
-IT$interview_id <- str_replace_all(IT$interview_id," ","")
+IT$trip_id <- str_replace_all(IT$trip_id," ","")
 
 # Split the date out.
 IT <- IT %>% 
        mutate(interview_date=
-        lubridate::ymd(str_sub(interview_id,start=6,end=nchar(interview_id)-3)),
+        lubridate::ymd(str_sub(trip_id,start=6,end=nchar(trip_id)-3)),
               year=lubridate::year(interview_date))
 
 IT <- IT %>% mutate(lbs_caught=num_caught*mrip_mean_lbs) %>% 
-           select(interview_id,year,sci_name,sp_frs_id,
+           select(trip_id,year,sci_name,sp_frs_id,
            sp_mrip_id,num_caught,lbs_caught)
 ```
 
@@ -79,7 +75,7 @@ Qt.sp <- IT %>% group_by(sp_frs_id) %>%
   pivot_wider(id_cols=,names_from=quantile,values_from=quant)
 
 # Catch quantiles for D7 catch (positive-only)
-IT.D7 <- IT %>% filter(sp_frs_id!="s20") %>% group_by(interview_id, year) %>%
+IT.D7 <- IT %>% filter(sp_frs_id!="s20") %>% group_by(trip_id, year) %>%
             summarize(num_caught=sum(num_caught),lbs_caught=sum(lbs_caught))
 
 Qt.D7 <- IT.D7 %>% group_by() %>% 
