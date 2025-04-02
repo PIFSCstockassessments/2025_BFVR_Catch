@@ -23,15 +23,20 @@ QT <- fread(fs::path(root_dir,"03_Outputs","mrip_quantiles.csv")) %>%
   pivot_longer(cols=q90:max,names_to="quantiles",values_to="value") %>% 
   filter(quantiles==selected.quantile) %>% as.data.table()
 
+SP.id <- QT[,sci_name:sp_frs_id]
+
 # Load fisher counts outputted from 01_Registered_fisher_list.qmd.
 # Appy the correction related to the assume # of BF-registered fishers catching
 # at least one deep7 in any given year.
-FC <- fread(fs::path(root_dir,"03_Outputs", "Fisher_counts.csv")) %>%
+FC <- fread(fs::path(root_dir,"03_Outputs", "Fisher_counts.csv")) %>% 
   filter(cml_registr == "N") %>% 
   mutate(n_bf_fishers=n_bf_fishers*prop_caught_d7)
 
 # Load FRS trip data outputted from 02_Annual_catch_from_BFVR.qmd
 F2 <- fread(fs::path(root_dir,"03_Outputs","FRS_trips.csv"))
+
+# Load CML_catches
+cml <- fread(fs::path(root_dir, "03_Outputs", "CML_catches.csv"))
 
 #======================Filters================================
 # Apply trip-level filters to classify fishers as comm. (1) vs non-comm. (0).
@@ -81,7 +86,7 @@ for(i in 1:200){
 # Bind results together and sum fisher-specific catch by iteration.
 Results      <- rbindlist(Results)
 Final.County <- Results %>% group_by(iter,year,county) %>%
-                 summarize_at(vars(s20:allsp),sum)
+                 summarize_at(vars(s15:allsp),sum)
 
 
 #=================Plots=====================================
@@ -94,28 +99,49 @@ ggplot(data=Final.County,aes(x=factor(year),y=d7))+
 
 # Now see global results.
 Final.all <- Final.County %>% group_by(iter,year) %>% 
-  summarize_at(vars(s20:allsp),sum)
+  summarize_at(vars(s15:allsp),sum)
 
 # Some species specific global results.
 Final.all.sp <- Final.all %>% pivot_longer(
-                cols=s20:s97,names_to="species",values_to="lbs_caught") %>%
-                  filter(species %in% c("s19","s21","s22")) %>%
+                cols=s15:s97,names_to="species",values_to="lbs_caught") %>%
+                  #filter(species %in% c("s19","s21","s22")) %>%
                      select(iter,year,species,lbs_caught)
 
-ggplot(data=Final.all.sp,aes(x=factor(year),y=lbs_caught))+
-      geom_boxplot(fill="lightblue",alpha=0.6,outlier.size=0.6)+
-      theme_minimal(base_size=13)+
+cml.all.sp <- cml %>% 
+pivot_longer(cols = d7:s97, names_to = "species", values_to = "catch") %>% 
+mutate(type = "CML")
+
+cml.all <- cml %>% 
+mutate(catch = d7,
+type = "CML") %>% 
+select(c("year", "catch", "type"))
+
+Final.all.sp %>%
+group_by(year, species) %>% 
+summarise(catch = quantile(lbs_caught, .5)) %>% 
+mutate(type = "BFVR Non-Commercial") %>% 
+bind_rows(cml.all.sp) %>% 
+left_join(SP.id, by = c("species" = "sp_frs_id")) %>% 
+filter(species != "d7") %>% 
+ggplot()+
+      geom_bar(aes(x = year, y=catch, group = type, fill = type), position="stack", stat="identity") +
+      theme_minimal()+
       theme(axis.text.x=element_text(angle=45,hjust=1),
             strip.text = element_text(size = 14))+
-      labs(y="Year",x="Non-commercial catch (lbs)")+
-      facet_wrap(~species,ncol=3)
+      labs(y="Year",x="Catch (lbs)")+
+      facet_wrap(~common_name,ncol=3)
 
 # Deep7 global results.
-ggplot(data=Final.all,aes(x=factor(year),y=d7))+
-      geom_boxplot(fill="lightblue",alpha=0.6,outlier.size=0.6)+
-      theme_minimal(base_size=13)+
+Final.all %>%
+group_by(year) %>% 
+summarise(catch = quantile(d7, .5)) %>% 
+mutate(type = "BFVR Non-Commercial") %>% 
+bind_rows(cml.all) %>% 
+ggplot()+
+      geom_bar(aes(x = year, y=catch, group = type, fill = type), position="stack", stat="identity") +
+      theme_minimal()+
       theme(axis.text.x=element_text(angle=45,hjust=1),
             strip.text = element_text(size = 14))+
-      labs(y="Year",x="Non-commercial catch (lbs)")
+      labs(x="Year",y="Catch (lbs)")
       
 

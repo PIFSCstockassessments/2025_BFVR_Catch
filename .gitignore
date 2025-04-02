@@ -11,6 +11,7 @@
 # History files
 .Rhistory
 .Rapp.history
+.radian_profile
 
 # Session Data files
 .RData
@@ -29,6 +30,7 @@
 
 # RStudio files
 .Rproj.user/
+*.Rproj
 
 
 # produced vignettes
