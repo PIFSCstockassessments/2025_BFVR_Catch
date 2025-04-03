@@ -64,48 +64,54 @@ ui <- page_sidebar(
   title = "Deep7 Non-Commercial Catch Analysis",
   
   sidebar = sidebar(
-    h4("Analysis Parameters"),
+
+    h4("CML catches"),
+
+    sliderInput("prop_unreported", 
+                 "What percentage of the commercial catch is unreported?", 
+                  min = 0, max = 100, value = 0, step = 10, post = "%"),
+
+          # SEPARATOR
+    hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"),
+
+    h4("Number of active non-commercial fishers"),
     
-    numericInput("prop_caught_d7", 
+    selectInput("multiplier_unregistered", 
+                 "How many Deep 7 fishers don't register on the BFVR?", 
+                 choices = list(
+                    "They all register" = 1,
+                    "Half as many as registered" = 1.5,
+                    "Equal number as those registered" = 2
+                 ),
+                 selected = 1),
+
+    sliderInput("proportion_inactive", 
                  "What percentage of Bottomfish registered 
-                 boats catch Deep7?", 
-                 value = 100, min = 0, max = 100, step = 10), 
-    
+                 boats are inactive?", 
+                 min = 0, max = 100, value = 0, step = 10, post = "%"), 
+
+          # SEPARATOR
+    hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"),
+
+    h4("How should we select fishers from the FRS?"),
+
     radioButtons("only_bf_registered", 
                  "Should we only include BF-registered fishers?", 
                  choices = c("Yes" = "Y", "No" = "N"), 
                  selected = "Y"),
-
-    selectInput("prop_unregisterd_bf", 
-                 "How many Deep 7 fishers don't register on the BFVR?", 
-                 choices = list(
-                    "None" = 1,
-                    "Half as many registered" = 1.5,
-                    "Equal number as those registered" = 2
-                 ),
-                 selected = 1),
     
+    selectInput("which_mrip_lamson",
+                "At what level should we filter the catch data?",
+                choices = c("Trip", "Annual", "Both"),
+                selected = "Trip"),
+
     selectInput("selected_quantile", 
-                "What percentile of catch from MRIP interviews should we keep?", 
+                "What cut off should we use?", 
                 choices =  c("90%" = "q90", "95%" = "q95", 
                 "99%" = "q99", "Maximum" = "max"), 
                 selected = "99%"),
-    
-    actionButton("run_analysis", "Run Analysis", class = "btn-primary"),
 
-          # SEPARATOR
-    hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"),
-    
-    # DISPLAY OPTIONS SECTION (not included in run_analysis)
-    h4("Plotting Options"),
-
-    # Add your new inputs here that won't be part of run_analysis
-    numericInput("prop_unreported", 
-                 "What proportion of the commercial catch is unreported?", 
-                 value = 0, min = 0, max = 1, step = 0.1),
-    
-    # Add more display options as needed
-    #checkboxInput("stack_bars", "Stack bars in plots", value = TRUE),
+    actionButton("run_analysis", "Run Analysis", class = "btn-primary")
     
   ),
   
@@ -145,10 +151,11 @@ return(Sys.time())
 # In server
 data_prep <- eventReactive(sim_trigger(), {
     
-    prop_caught_d7 <- input$prop_caught_d7 
+    proportion_inactive <- input$proportion_inactive 
     only_bf_registered <- input$only_bf_registered 
     selected_quantile <- input$selected_quantile
-    prop_unregisterd_bf <- as.numeric(input$prop_unregisterd_bf)
+
+    multiplier_unregistered <- as.numeric(input$multiplier_unregistered)
     # Select the quantile to use
     QT_sim <- QT %>% 
         filter(quantiles == selected_quantile) %>% as.data.table()
@@ -157,8 +164,8 @@ data_prep <- eventReactive(sim_trigger(), {
     # catching at least one deep7 in any given year
     # and the percentage of boats that are not registered in the BFVR
     FC_sim <- FC %>% 
-        mutate(n_bf_fishers = n_bf_fishers * prop_caught_d7/100,
-        n_bf_fishers = n_bf_fishers * prop_unregisterd_bf) 
+        mutate(n_bf_fishers = n_bf_fishers - (n_bf_fishers * (proportion_inactive/100)),
+        n_bf_fishers = n_bf_fishers * multiplier_unregistered) 
 
 ## TODO: add Lamson option (radio button, MRIP/Lamson/both)
     # Create a new column for future data manipulation
@@ -284,7 +291,7 @@ Final.all.sp <- reactive({
   display_options <- reactive({
     # These inputs can change without triggering the simulation
     list(
-      prop_unreported = input$prop_unreported
+      prop_unreported = input$prop_unreported/100
     )
   })
 
