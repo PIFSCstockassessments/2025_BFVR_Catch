@@ -15,17 +15,74 @@ This script is to obtain the distribution of Deep7 and total per-trip catches fo
 suppressWarnings( require(pacman,quietly=T) )
 pacman::p_load("tidyverse","data.table","this.path",
                "readxl","janitor","flextable","ggridges")
+
 root_dir <- here(..=1)
 
-# Default table format (flextable package)
-set_flextable_defaults(na_str="N/A",table.layout="autofit",line_spacing=0.5)
-
-# Quiet the summarize function messages, add to 16 digits to load the interview_id correctly.
-options(dplyr.summarise.inform = FALSE,digits=16)
+# Quiet the summarize function messages.
+options(dplyr.summarise.inform = FALSE)
 ```
 
 ### Load the necessary data sets
 
-We obtained the MRIP interviews from Hongguang Ma.
+Explanations for the columns in the survey file can be found in the "Lamson - BF Printable Codes Final II.docx" file. In short, SurveyID represents unique fishers answering the questionnaire. Q21 is "do you ever sell bottomfish?" (allows us to classify CML and non-CML fishers), with "1" equal yes and "2" equal no. The rest of the columns selected below are yearly catch in pounds per Deep 7 species and uku.
 
-`{r} IT <-fread(         fs::path(root_dir,"01_Data","MRIP never sell interviews.csv")) %>%           select(interview_id=ID_CODE,species_mrip_id=SP_CODE,num_caught=catch) %>%             mutate(species_mrip_id=as.character(species_mrip_id))  SP <- fread(fs::path(root_dir,"01_Data","mrip_mean_weights.csv")) %>%             mutate(species_mrip_id=as.character(species_mrip_id)) %>%                arrange(species_frs_id) %>% as.data.table()}`
+```{r}
+LM <-fread(
+        fs::path(root_dir,"01_Data","Lamson - BF Survey Table FINAL.csv")) %>% 
+         select(fisher_id=SurveyID,
+                sell_bf=Q21,
+                s21=Q62, s97=Q66, s15=Q70, s17=Q74,
+                s58=Q78, s22=Q82, s19=Q86, s20=Q90) %>% as.data.table()
+```
+
+Let's convert code "99" and "no" to NA and make all columns numeric.
+
+```{r}
+LM <- LM %>%  
+  mutate(across(where(is.character), ~ if_else(. %in% c("no","99"),NA,.))) %>% 
+  mutate(across(where(is.numeric), ~ if_else(. %in% 99,NA,.))) %>% 
+  mutate(across(everything(), ~ as.numeric(.)))
+```
+
+Let's calculate the bottomfish (+uku) and Deep7 totals. Let's also remove all fishers not catching any of these.
+
+```{r}
+LM <- LM %>% mutate(d7=rowSums(across(c(s21:s19)),na.rm=T),
+                    allBF=rowSums(across(c(s21:s20)),na.rm=T))
+
+LM <- LM %>% filter(!is.na(allBF)&allBF!=0)
+```
+
+Let's pivot species-specific catch longer.
+
+```{r}
+LM <- LM %>% 
+  pivot_longer(cols=(s21:allBF),names_to="sp_frs_id",values_to="lbs_caught") %>% 
+   as.data.table()
+```
+
+Now let's calculate the quantile of these annual catches, for non-CML fishers.
+
+```{r}
+LM <- LM %>% filter(sell_bf==2) 
+
+Qt.sp <- LM %>% group_by(sp_frs_id) %>%
+  reframe(quant=round(quantile(lbs_caught,c(0.90,0.95,0.99,1)),0),
+          quantile=c("q90","q95","q99","max")) %>% 
+  pivot_wider(id_cols=,names_from=quantile,values_from=quant) 
+
+Qt.sp$sci_name  <- c("All BF",
+                     "Deep7",
+                     "Hyporthodus quernus",
+                     "Pristipomoides sieboldii",
+                     "Pristipomoides filamentosus",
+                     "Aprion virescens",
+                     "Etelis carbunculus",
+                     "Etelis coruscans",
+                     "Aphareus rutilans",
+                     "Pristipomoides zonatus")
+
+Qt.sp <- Qt.sp %>% select(sci_name,sp_frs_id,q90:max)
+
+write_csv(Qt.sp,file.path(root_dir,"03_Outputs","lamson_quantiles.csv"))
+```
