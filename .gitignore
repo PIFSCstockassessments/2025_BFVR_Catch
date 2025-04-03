@@ -1,7 +1,7 @@
 ## Folders
 01_Data
 03_Outputs
-04_Shiny/*.csv
+04_Shiny/data/*.csv
 
 ## VS Code
 *.json

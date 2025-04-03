@@ -7,19 +7,21 @@ library(plotly)
 
 #root_dir <- here(..=1)
 
-QT <- fread(file.path("mrip_quantiles.csv")) %>%
+QT_trip <- fread(file.path("data", "mrip_quantiles.csv")) %>%
+        pivot_longer(cols = q90:max, names_to="quantiles", values_to="value")
+QT_annual <- fread(file.path("data", "lamson_quantiles.csv")) %>%
         pivot_longer(cols = q90:max, names_to="quantiles", values_to="value")
 
 # Get species codes and names for plots
-SP.id <- QT[,1:3]
+SP.id <- QT_trip[,1:3]
 
-FC <- fread(file.path("Fisher_counts.csv")) %>%
+FC <- fread(file.path("data", "Fisher_counts.csv")) %>%
         filter(cml_registr == "N")
 
-F2 <- fread(file.path("FRS_trips_annon.csv"))
+F2 <- fread(file.path("data", "FRS_trips_annon.csv"))
 
 # Read in CML catches and tidy
-cml <- fread(file.path("CML_catches.csv"))
+cml <- fread(file.path("data", "CML_catches.csv"))
 
 cml.all.sp <- cml %>% 
   pivot_longer(cols = d7:s97, names_to = "species", values_to = "catch") %>% 
@@ -30,7 +32,7 @@ cml.all <- cml %>%
           type = "CML") %>% 
   select(c("year", "catch", "type"))
 
-TC <- fread(file.path("Total_catches_2024.csv"))
+TC <- fread(file.path("data", "Total_catches_2024.csv"))
 
 tc.all <- TC %>% 
   select(c("Year", "d7")) %>% 
@@ -60,74 +62,122 @@ tc.all.sp <- TC %>%
 #   )
 
 # Define UI
-ui <- page_sidebar(
+ui <- page(
   title = "Deep7 Non-Commercial Catch Analysis",
   
-  sidebar = sidebar(
-
-    h4("CML catches"),
-
-    sliderInput("prop_unreported", 
-                 "What percentage of the commercial catch is unreported?", 
-                  min = 0, max = 100, value = 0, step = 10, post = "%"),
-
+  # Create a tabbed interface
+  navset_tab(
+    # Introduction Tab
+    nav_panel(
+      title = "Introduction",
+      card(
+        card_header(
+          h3("Welcome to the Deep7 Non-Commercial Catch Analysis Tool", class = "text-center")
+        ),
+        card_body(
+          div(
+            style = "max-width: 800px; margin: 0 auto;",
+            h4("About This Tool"),
+            p("This application helps estimate the non-commercial catch of Deep7 bottomfish species in Hawaii."),
+            p("The tool combines data from multiple sources and allows users to adjust various parameters 
+              that affect the final estimates."),
+            
+            h4("Key Features"),
+            tags$ul(
+              tags$li(strong("Commercial Catch Adjustment:"), " Account for unreported commercial catches"),
+              tags$li(strong("Fisher Count Estimation:"), " Adjust for unregistered vessels and inactive registered vessels"),
+              tags$li(strong("FRS Data Filtering:"), " Select appropriate filtering levels and percentile cutoffs")
+            ),
+            
+            h4("How to Use"),
+            p("1. Navigate to the 'Analysis' tab"),
+            p("2. Adjust the parameters in the sidebar to reflect your assumptions"),
+            p("3. Click the 'Run Analysis' button to generate results"),
+            p("4. Review the analysis results in the main panel"),
+            
+            h4("Background"),
+            p("The Deep7 bottomfish species are economically and culturally important to Hawaii. 
+              Accurate catch estimates for both commercial and non-commercial sectors are essential 
+              for sustainable fisheries management. This tool helps estimate the non-commercial 
+              component based on the best available data."),
+            
+            hr(),
+            p(class = "text-center", "Click on the 'Analysis' tab above to begin.")
+          )
+        )
+      )
+    ),
+    
+    # Main Analysis Tab
+    nav_panel(
+      title = "Analysis",
+      page_sidebar(
+        sidebar = sidebar(
+          width = 400,
+          h4("CML catches"),
+          
+          sliderInput("prop_unreported", 
+                     "What percentage of the commercial catch is unreported?", 
+                      min = 0, max = 100, value = 0, step = 10, post = "%"),
+          
           # SEPARATOR
-    hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"),
-
-    h4("Number of active non-commercial fishers"),
-    
-    selectInput("multiplier_unregistered", 
-                 "How many Deep 7 fishers don't register on the BFVR?", 
-                 choices = list(
-                    "They all register" = 1,
-                    "Half as many as registered" = 1.5,
-                    "Equal number as those registered" = 2
-                 ),
-                 selected = 1),
-
-    sliderInput("proportion_inactive", 
-                 "What percentage of Bottomfish registered 
-                 boats are inactive?", 
-                 min = 0, max = 100, value = 0, step = 10, post = "%"), 
-
+          hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"),
+          
+          h4("Number of active non-commercial fishers"),
+          
+          selectInput("multiplier_unregistered", 
+                     "How many Deep 7 fishers don't register on the BFVR?", 
+                     choices = list(
+                        "They all register" = 1,
+                        "Half as many as registered" = 1.5,
+                        "Equal number as those registered" = 2
+                     ),
+                     selected = 1),
+          
+          sliderInput("proportion_inactive", 
+                     "What percentage of Bottomfish registered 
+                     boats are inactive?", 
+                     min = 0, max = 100, value = 0, step = 10, post = "%"), 
+          
           # SEPARATOR
-    hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"),
-
-    h4("How should we select fishers from the FRS?"),
-
-    radioButtons("only_bf_registered", 
-                 "Should we only include BF-registered fishers?", 
-                 choices = c("Yes" = "Y", "No" = "N"), 
-                 selected = "Y"),
-    
-    selectInput("which_mrip_lamson",
-                "At what level should we filter the catch data?",
-                choices = c("Trip", "Annual", "Both"),
-                selected = "Trip"),
-
-    selectInput("selected_quantile", 
-                "What cut off should we use?", 
-                choices =  c("90%" = "q90", "95%" = "q95", 
-                "99%" = "q99", "Maximum" = "max"), 
-                selected = "99%"),
-
-    actionButton("run_analysis", "Run Analysis", class = "btn-primary")
-    
-  ),
+          hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"),
+          
+          h4("How should we select fishers from the FRS?"),
+          
+          radioButtons("only_bf_registered", 
+                     "Should we only include BF-registered fishers?", 
+                     choices = c("Yes" = "Y", "No" = "N"), 
+                     selected = "Y"),
+          
+          selectInput("which_filter_level",
+                    "At what level should we filter the catch data?",
+                    choices = c("Trip", "Annual", "Both"),
+                    selected = "Trip"),
+          
+          selectInput("selected_quantile", 
+                    "What cut off should we use?", 
+                    choices =  c("90%" = "q90", "95%" = "q95", 
+                    "99%" = "q99", "Maximum" = "max"), 
+                    selected = "q99"),
+          
+          actionButton("run_analysis", "Run Analysis", class = "btn-primary")
+        ),
   
-   layout_columns(
     card(
         card_header("Deep7 Non-Commercial Catch by Year"),
-        plotlyOutput("combined_plot") 
-    )
-  ),
-  layout_columns(
+        card_body(
+          plotlyOutput("combined_plot")
+        )
+    ),
     card(
       card_header("Deep7 Non-Commercial Catch by Species"),
-      plotlyOutput("species_plot", height = "500px")
+      card_body(
+        plotlyOutput("species_plot", height = "500px")
+      )
+    )
+      )
     )
   )
- 
 )
 
 # Define server
@@ -154,11 +204,8 @@ data_prep <- eventReactive(sim_trigger(), {
     proportion_inactive <- input$proportion_inactive 
     only_bf_registered <- input$only_bf_registered 
     selected_quantile <- input$selected_quantile
-
+    filter_id <- input$which_filter_level
     multiplier_unregistered <- as.numeric(input$multiplier_unregistered)
-    # Select the quantile to use
-    QT_sim <- QT %>% 
-        filter(quantiles == selected_quantile) %>% as.data.table()
     
     # Apply the correction related to the assumed # of BF registered fishers 
     # catching at least one deep7 in any given year
@@ -170,14 +217,19 @@ data_prep <- eventReactive(sim_trigger(), {
 ## TODO: add Lamson option (radio button, MRIP/Lamson/both)
     # Create a new column for future data manipulation
     F2$trip_type <- 0
-    F2[d7  > QT_sim[sp_frs_id=="d7"]$value|
-      s17 > QT_sim[sp_frs_id=="s17"]$value| 
-      s19 > QT_sim[sp_frs_id=="s19"]$value| 
-      s21 > QT_sim[sp_frs_id=="s21"]$value|
-      s22 > QT_sim[sp_frs_id=="s22"]$value|
-      s97 > QT_sim[sp_frs_id=="s97"]$value| 
-      s20 > QT_sim[sp_frs_id=="s20"]$value 
+    if(filter_id == "Trip" | filter_id == "Both"){
+      QT_trip <- QT_trip %>% 
+        filter(quantiles == selected_quantile) %>% 
+        as.data.table()
+      F2[d7  > QT_trip[sp_frs_id=="d7"]$value|
+      s17 > QT_trip[sp_frs_id=="s17"]$value| 
+      s19 > QT_trip[sp_frs_id=="s19"]$value| 
+      s21 > QT_trip[sp_frs_id=="s21"]$value|
+      s22 > QT_trip[sp_frs_id=="s22"]$value|
+      s97 > QT_trip[sp_frs_id=="s97"]$value| 
+      s20 > QT_trip[sp_frs_id=="s20"]$value 
       ]$trip_type <- 1
+    }
 
      # Sum catches to annual-level per fisher
     F3 <- F2 %>% 
@@ -188,7 +240,24 @@ data_prep <- eventReactive(sim_trigger(), {
     F3 <- F3 %>% 
       mutate(fisher_type = if_else(trip_type > 0, "Comm", "NC")) %>%
       select(-trip_type)
-    
+    # Apply the annual-level filters to classify fishers as comm. vs non-comm.
+    F3$annual_type <- "NC"
+
+    if(filter_id == "Annual" | filter_id == "Both"){
+      QT_annual <- QT_annual %>% 
+          filter(quantiles == selected_quantile) %>% as.data.table()
+      F3[d7  > QT_annual[sp_frs_id=="d7"]$value|
+      s17 > QT_annual[sp_frs_id=="s17"]$value| 
+      s19 > QT_annual[sp_frs_id=="s19"]$value| 
+      s21 > QT_annual[sp_frs_id=="s21"]$value|
+      s22 > QT_annual[sp_frs_id=="s22"]$value|
+      s97 > QT_annual[sp_frs_id=="s97"]$value| 
+      s20 > QT_annual[sp_frs_id=="s20"]$value 
+      ]$annual_type <- "Comm"
+    }
+    F3 <- F3 %>% 
+    mutate(fisher_type=if_else(annual_type=="Comm","Comm",fisher_type))
+
     # Apply filters on the fishers
     if (input$only_bf_registered == "Y") { 
       F3 <- F3 %>% filter(bf_registr == "Y") 
