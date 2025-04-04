@@ -6,7 +6,7 @@ library(ggthemes)
 library(plotly)
 
 #root_dir <- here(..=1)
-
+source(file.path("./shiny_functions.r"))
 QT_trip <- fread(file.path("data", "mrip_quantiles.csv")) %>%
         pivot_longer(cols = q90:max, names_to="quantiles", values_to="value")
 QT_annual <- fread(file.path("data", "lamson_quantiles.csv")) %>%
@@ -134,9 +134,12 @@ ui <- page(
                      ),
                      selected = 1),
           
-          sliderInput("proportion_inactive", 
-                     "What percentage of Bottomfish registered 
-                     boats are inactive?", 
+          sliderInput("proportion_inactive",
+                      label = tooltip("What percentage of Bottomfish registered 
+                     boats are inactive?",
+                     "This is the percentage of boats that are registered in the BFVR
+                     but never go fishing for bottomfish or are no longer fishing.", 
+                     placement = "right"), 
                      min = 0, max = 100, value = 0, step = 10, post = "%"), 
           
           # SEPARATOR
@@ -164,17 +167,46 @@ ui <- page(
         ),
   
     card(
-        card_header("Deep7 Non-Commercial Catch by Year"),
+        card_header("Deep7 Catch by Year"),
         card_body(
           plotlyOutput("combined_plot")
         )
     ),
     card(
-      card_header("Deep7 Non-Commercial Catch by Species"),
+      card_header("Deep7 Catch by Species"),
       card_body(
-        plotlyOutput("species_plot", height = "500px")
+        plotlyOutput("species_plot")
       )
     )
+
+      # layout_column_wrap(
+      #   width = 1/2,
+      #   #style = css(grid_gap = "15px"),
+      #   card(
+      #     card_header("Hapu"),
+      #     plotlyOutput("hapu_plot", height = "250px")
+      #   ),
+      #   card(
+      #     card_header("Ehu"),
+      #     plotlyOutput("ehuPlot2", height = "250px")
+      #   ),
+      #   card(
+      #     card_header("Onaga"),
+      #     plotlyOutput("onagaPlot2", height = "250px")
+      #   ),
+      #   card(
+      #     card_header("Kalekale"),
+      #     plotlyOutput("kalekalePlot2", height = "250px")
+      #   ),
+      #   card(
+      #     card_header("Gindai"),
+      #     plotlyOutput("gindaiPlot2", height = "250px")
+      #   ),
+      #   card(
+      #     card_header("Lehi"),
+      #     plotlyOutput("lehiPlot2", height = "250px")
+      #   )
+      # )
       )
     )
   )
@@ -214,9 +246,9 @@ data_prep <- eventReactive(sim_trigger(), {
         mutate(n_bf_fishers = n_bf_fishers - (n_bf_fishers * (proportion_inactive/100)),
         n_bf_fishers = n_bf_fishers * multiplier_unregistered) 
 
-## TODO: add Lamson option (radio button, MRIP/Lamson/both)
     # Create a new column for future data manipulation
     F2$trip_type <- 0
+
     if(filter_id == "Trip" | filter_id == "Both"){
       QT_trip <- QT_trip %>% 
         filter(quantiles == selected_quantile) %>% 
@@ -234,26 +266,26 @@ data_prep <- eventReactive(sim_trigger(), {
      # Sum catches to annual-level per fisher
     F3 <- F2 %>% 
       group_by(year, cml_no.fs, bf_registr, cml_registr, county) %>%
-      summarize(across(where(is.numeric), sum), .groups = "drop")
+      summarize_if(is.numeric, sum)
     
     # Re-classify "trip_type" into "fisher_type"
     F3 <- F3 %>% 
       mutate(fisher_type = if_else(trip_type > 0, "Comm", "NC")) %>%
-      select(-trip_type)
+      select(-trip_type) %>% as.data.table()
     # Apply the annual-level filters to classify fishers as comm. vs non-comm.
     F3$annual_type <- "NC"
 
     if(filter_id == "Annual" | filter_id == "Both"){
       QT_annual <- QT_annual %>% 
           filter(quantiles == selected_quantile) %>% as.data.table()
-      F3[d7  > QT_annual[sp_frs_id=="d7"]$value|
-      s17 > QT_annual[sp_frs_id=="s17"]$value| 
-      s19 > QT_annual[sp_frs_id=="s19"]$value| 
-      s21 > QT_annual[sp_frs_id=="s21"]$value|
-      s22 > QT_annual[sp_frs_id=="s22"]$value|
-      s97 > QT_annual[sp_frs_id=="s97"]$value| 
-      s20 > QT_annual[sp_frs_id=="s20"]$value 
-      ]$annual_type <- "Comm"
+          F3[d7  > QT_annual[sp_frs_id=="d7"]$value|
+            s17 > QT_annual[sp_frs_id=="s17"]$value| 
+            s19 > QT_annual[sp_frs_id=="s19"]$value| 
+            s21 > QT_annual[sp_frs_id=="s21"]$value|
+            s22 > QT_annual[sp_frs_id=="s22"]$value|
+            s97 > QT_annual[sp_frs_id=="s97"]$value| 
+            s20 > QT_annual[sp_frs_id=="s20"]$value 
+            ]$annual_type <- "Comm"
     }
     F3 <- F3 %>% 
     mutate(fisher_type=if_else(annual_type=="Comm","Comm",fisher_type))
@@ -357,7 +389,7 @@ Final.all.sp <- reactive({
 })
 
  # For display parameters (not part of run_analysis)
-  display_options <- reactive({
+  extras <- reactive({
     # These inputs can change without triggering the simulation
     list(
       prop_unreported = input$prop_unreported/100
@@ -368,7 +400,7 @@ Final.all.sp <- reactive({
 output$species_plot <- renderPlotly({
   req(Final.all.sp())
 
-options <- display_options()
+options <- extras() # currently only extra is if you want to plot underreporting
     
 # First create data for BFVR Non-Commercial
 non_commercial_data <- Final.all.sp() %>%
@@ -404,7 +436,8 @@ all_years <- sort(unique(plot_data$year))
 plot_data <- plot_data %>%
   left_join(SP.id, by = c("species" = "sp_frs_id")) %>% 
   filter(species != "d7") %>%
-  mutate(type = factor(type, levels = c("BFVR Non-Commercial", "Unreported", "CML")))
+  mutate(type = factor(type, levels = c("BFVR Non-Commercial", "Unreported", "CML"))) %>% 
+  distinct(year, species, type, .keep_all = TRUE) 
 
 # Create a list to store individual plots
 plot_list <- list()
@@ -470,7 +503,6 @@ for (i in 1:length(common_name_vec)) {
   plot_list[[i]] <- p
 }
 
-## TODO: why are species plot values not correct????
 p.sp <- subplot(
         plot_list, 
         nrows = 3, 
@@ -496,11 +528,26 @@ p.sp
 
 })
 
+# # For a single plot
+# output$hapu_plot <- renderPlot({
+#   # Get all the prepared data from the reactive function
+#   plot_data_list <- prepare_catch_plot_data()
+  
+#   # Use the function with the extracted elements
+#   create_catch_plot(
+#     plot_data = plot_data_list$plot_data,
+#     tc_all_sp = tc.all.sp,  
+#     common_name_id = plot_data_list$common_name_vec[1],  # For the first species
+#     year_labels = plot_data_list$all_years,
+#     colors = plot_data_list$colors
+#   )
+# })
+
 # Create a total Deep7 plot
 output$combined_plot <- renderPlotly({
   req(Final.all())
 
-options <- display_options()
+options <- extras()
 
 # First create the data for BFVR Non-Commercial
 non_commercial_data <- Final.all() %>%

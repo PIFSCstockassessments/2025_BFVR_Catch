@@ -9,7 +9,7 @@ multiplier_unregistered <- 1
 
 # Multiplier to BF-registered boats to remove inactive vessels
 # (i.e. not catching deep7) in a given year.
-multiplier_inactive <- 1
+proportion_inactive <- 0
 
 # FRS fishers to filter out
 only_bf_registered  <- "Y"  # Only keep BF-registered fishers
@@ -23,14 +23,14 @@ selected.quantile <- c("q90","q95","q99","max")[3]
 #================Load data==============================
 # Load trip-level limits outputted from 02_MRIP_Interview_Catch.qmd
 # and select the quantile to use.
-QT.mrip <- fread(fs::path(root_dir,"03_Outputs","mrip_quantiles.csv")) %>% 
+QT_trip <- fread(fs::path(root_dir,"03_Outputs","mrip_quantiles.csv")) %>% 
   pivot_longer(cols=q90:max,names_to="quantiles",values_to="value") %>% 
-  filter(quantiles==selected.quantile) %>% as.data.table()
+  filter(quantiles==selected.quantile) %>% as.data.table() 
 
-SP.id <- QT.mrip[,sci_name:sp_frs_id]
+SP.id <- QT_trip[,sci_name:sp_frs_id]
 
 # Load annual-level limits from 03_Lamson_Annual_Catch.qmd
-QT.lamson <- fread(fs::path(root_dir,"03_Outputs","lamson_quantiles.csv")) %>% 
+QT_annual <- fread(fs::path(root_dir,"03_Outputs","lamson_quantiles.csv")) %>% 
   pivot_longer(cols=q90:max,names_to="quantiles",values_to="value") %>% 
   filter(quantiles==selected.quantile) %>% as.data.table()
 
@@ -39,17 +39,17 @@ QT.lamson <- fread(fs::path(root_dir,"03_Outputs","lamson_quantiles.csv")) %>%
 # at least one deep7 in any given year.
 FC <- fread(fs::path(root_dir,"03_Outputs", "Fisher_counts.csv")) %>% 
   filter(cml_registr == "N") %>% 
-  mutate(n_bf_fishers=n_bf_fishers*prop_caught_d7)
+  mutate(n_bf_fishers= n_bf_fishers - (n_bf_fishers * proportion_inactive))
 
 # Load FRS trip data outputted from 02_Annual_catch_from_BFVR.qmd
-F2 <- fread(fs::path(root_dir,"03_Outputs","FRS_trips.csv"))
+F2 <- fread(fs::path(root_dir,"03_Outputs","FRS_trips_annon.csv"))
 
 # Load CML_catches
 cml <- fread(fs::path(root_dir, "03_Outputs", "CML_catches.csv"))
 
 #======================Modify the number of active BFVR vessels===========
 
-FC$n_bf_fishers <- FC$n_bf_fishers*multiplier_unregistered*multiplier_inactive
+FC$n_bf_fishers <- FC$n_bf_fishers*multiplier_unregistered
 
 #=========================================================================
 
@@ -57,13 +57,13 @@ FC$n_bf_fishers <- FC$n_bf_fishers*multiplier_unregistered*multiplier_inactive
 # Apply trip-level filters to classify fishers as comm. (1) vs non-comm. (0).
 F2$trip_type <- 0
 
-F2[d7  > QT.mrip[sp_frs_id=="d7"]$value|
-   s17 > QT.mrip[sp_frs_id=="s17"]$value| 
-   s19 > QT.mrip[sp_frs_id=="s19"]$value| 
-   s21 > QT.mrip[sp_frs_id=="s21"]$value|
-   s22 > QT.mrip[sp_frs_id=="s22"]$value|
-   s97 > QT.mrip[sp_frs_id=="s97"]$value| 
-   s20 > QT.mrip[sp_frs_id=="s20"]$value 
+F2[d7  > QT_trip[sp_frs_id=="d7"]$value|
+   s17 > QT_trip[sp_frs_id=="s17"]$value| 
+   s19 > QT_trip[sp_frs_id=="s19"]$value| 
+   s21 > QT_trip[sp_frs_id=="s21"]$value|
+   s22 > QT_trip[sp_frs_id=="s22"]$value|
+   s97 > QT_trip[sp_frs_id=="s97"]$value| 
+   s20 > QT_trip[sp_frs_id=="s20"]$value 
    ]$trip_type <- 1
 
 # Sum catches from trip-level data to annual-level per fisher.
@@ -77,13 +77,13 @@ F3 <- F3 %>% mutate(fisher_type=if_else(trip_type > 0,"Comm","NC")) %>%
 # Apply the annual-level filters to classify fishers as comm. vs non-comm.
 F3$annual_type <- "NC"
 
-F3[d7  > QT.lamson[sp_frs_id=="d7"]$value|
-   s17 > QT.lamson[sp_frs_id=="s17"]$value| 
-   s19 > QT.lamson[sp_frs_id=="s19"]$value| 
-   s21 > QT.lamson[sp_frs_id=="s21"]$value|
-   s22 > QT.lamson[sp_frs_id=="s22"]$value|
-   s97 > QT.lamson[sp_frs_id=="s97"]$value| 
-   s20 > QT.lamson[sp_frs_id=="s20"]$value 
+F3[d7  > QT_annual[sp_frs_id=="d7"]$value|
+   s17 > QT_annual[sp_frs_id=="s17"]$value| 
+   s19 > QT_annual[sp_frs_id=="s19"]$value| 
+   s21 > QT_annual[sp_frs_id=="s21"]$value|
+   s22 > QT_annual[sp_frs_id=="s22"]$value|
+   s97 > QT_annual[sp_frs_id=="s97"]$value| 
+   s20 > QT_annual[sp_frs_id=="s20"]$value 
    ]$annual_type <- "Comm"
 
 F3 <- F3 %>% mutate(fisher_type=if_else(annual_type=="Comm","Comm",fisher_type))
@@ -167,10 +167,47 @@ summarise(catch = quantile(d7, .5)) %>%
 mutate(type = "BFVR Non-Commercial") %>% 
 bind_rows(cml.all) %>% 
 ggplot()+
-      geom_bar(aes(x = year, y=catch, group = type, fill = type), position="stack", stat="identity") +
+      geom_bar(aes(x = year, y=catch, group = type, fill = type),
+               position="stack", stat="identity") +
+      geom_line(data = tc.all.sp, aes(x = year, y = catch, color = type), linewidth = 2) + 
+      geom_point(data = tc.all.sp, aes(x = year, y = catch, color = type), size = 3) +
       theme_minimal()+
       theme(axis.text.x=element_text(angle=45,hjust=1),
             strip.text = element_text(size = 14))+
-      labs(x="Year",y="Catch (lbs)")
+      labs(y="Year",x="Catch (lbs)")+
+      facet_wrap(~common_name,ncol=3, scale = "free_y") +
+      scale_fill_manual(values = colors) +
+      scale_color_manual(values = colors)
       
+common_name_vec <- unique(plot_data$common_name)
 
+hapu <- plot_ly(data = plot_data %>% filter(common_name == common_name_vec[1]), 
+                x = ~year, y = ~catch, color = ~type, 
+                type = "bar",
+                colors = colors) %>%
+      add_trace(data = tc.all.sp %>% filter(common_name == common_name_vec[1]), 
+              x = ~year, y = ~catch, type = "scatter",
+              mode = "lines+markers",
+              line = list(color = "grey", width = 2),
+              marker = list(color = "grey", size = 3),
+              name = "Total catch used in the 2024 assessment") %>%
+  layout(
+    annotations = list( 
+        list( 
+          x = 0.2,  
+          y = 1.0,  
+          text = common_name_vec[1],  
+          xref = "paper",  
+          yref = "paper",  
+          xanchor = "center",  
+          yanchor = "bottom",  
+          showarrow = FALSE,
+          font = list(size = 14, color = "black")
+        )),
+  showlegend = (i == 1),  # Only show legend on first plot
+  xaxis = base_layout$xaxis,
+  yaxis = base_layout$yaxis,
+  hovermode = base_layout$hovermode,
+  margin = base_layout$margin,
+  barmode = 'stack'
+)                 
