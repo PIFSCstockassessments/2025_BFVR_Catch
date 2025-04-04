@@ -64,19 +64,16 @@ ui <- page(
           
           h4("Number of active non-commercial fishers"),
           
-          selectInput("multiplier_unregistered", 
-                        label = tooltip("How many Deep 7 fishers don't register on the BFVR?",
+          sliderInput("multiplier_unregistered", 
+                        label = tooltip("What percentage of boats fishing for bottomfish are registered in the BFVR?",
                         "Based on your experience, how many boats do you see fishing for bottomfish
                         that are not registered in the BFVR compared to boats that are registered? 
-                        It is assumed that if the boat has a BF sticker, it is registered in the BFVR.",
+                        It is assumed that if the boat has a BF sticker, it is registered in the BFVR. For example,
+                        if every boat you see has a BF sticker, choose 100%, if about half of the boats have a BF sticker,
+                        choose 50%.",
                         placement = "right"
                         ),
-                     choices = list(
-                        "They all register" = 1,
-                        "Half as many as registered" = 1.5,
-                        "Equal number as those registered" = 2
-                     ),
-                     selected = 1),
+                     min = 25, max = 100, value = 100, step = 25, post = "%"),
           
           sliderInput("proportion_inactive",
                       label = tooltip("What percentage of Bottomfish registered 

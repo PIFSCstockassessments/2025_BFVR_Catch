@@ -24,14 +24,14 @@ data_prep <- eventReactive(sim_trigger(), {
     only_bf_registered <- input$only_bf_registered 
     selected_quantile <- input$selected_quantile
     filter_id <- input$which_filter_level
-    multiplier_unregistered <- as.numeric(input$multiplier_unregistered)
+    multiplier_unregistered <- (input$multiplier_unregistered/100)
     
     # Apply the correction related to the assumed # of BF registered fishers 
     # catching at least one deep7 in any given year
     # and the percentage of boats that are not registered in the BFVR
     FC_sim <- FC %>% 
         mutate(n_bf_fishers = n_bf_fishers - (n_bf_fishers * (proportion_inactive/100)),
-        n_bf_fishers = n_bf_fishers * multiplier_unregistered) 
+        n_bf_fishers = n_bf_fishers * (1/multiplier_unregistered)) 
 
     # Create a new column for future data manipulation
     F2$trip_type <- 0
@@ -87,7 +87,7 @@ data_prep <- eventReactive(sim_trigger(), {
     
     # Add the # of NC vessels by year x County to the catch data
     F3 <- F3 %>% 
-      left_join(FC_sim, by = join_by(year, county)) %>% 
+      left_join(FC_sim, by = join_by(year, county), relationship = "many-to-many") %>% 
       relocate(n_bf_fishers, .after = county)
 
     return(list(
@@ -221,7 +221,7 @@ colors <- c("Commercial - CML reported" = "#FC8D62",
 all_years <- sort(unique(plot_data$year))
 
 plot_data <- plot_data %>%
-  left_join(SP.id, by = c("species" = "sp_frs_id")) %>% 
+  left_join(SP.id, by = c("species" = "sp_frs_id"), relationship = "many-to-many") %>% 
   filter(species != "d7") %>%
   mutate(type = factor(type, levels = c("Non-commercial - BFVR approach", 
   "Commercial - CML unreported", "Commercial - CML reported"))) %>%
@@ -255,7 +255,7 @@ for (i in 1:length(common_name_vec)) {
   
   # Create individual plot
 
-      p <- plot_ly(data = facet_data, x = ~year, y = ~catch, color = ~type, 
+      p <- plot_ly(data = facet_data, x = ~year, y = ~round(catch, digits = 0), color = ~type, 
                   type = "bar",
                   colors = colors,
                   hovertemplate = "Year: %{x} <br> Catch (lbs): %{y}") %>%
@@ -367,7 +367,7 @@ colors <- c("Commercial - CML reported" = "#FC8D62",
 all_years <- sort(unique(plot_data$year))
 
 # Create interactive plot with plot_ly
-p <-plot_ly(plot_data, x = ~year, y = ~catch, color = ~type, 
+p <-plot_ly(plot_data, x = ~year, y = ~round(catch, digits = 0), color = ~type, 
         type = "bar", 
         colors = colors,
         hovertemplate = "Year: %{x} <br> Catch (lbs): %{y}") %>% 
@@ -394,7 +394,7 @@ p <-plot_ly(plot_data, x = ~year, y = ~catch, color = ~type,
           barmode = 'stack') %>%
     # Add text annotations for the annual sum above each bar
     add_annotations(
-      data = plot_data %>% group_by(year) %>% summarize(total = sum(catch)),
+      data = plot_data %>% group_by(year) %>% summarize(total = round(sum(catch), digits = 0)),
       x = ~year,
       y = ~total,
       text = ~paste(format(total, big.mark = ","), "lbs"),
