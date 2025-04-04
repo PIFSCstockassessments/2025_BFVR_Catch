@@ -121,9 +121,9 @@ run_sim <- eventReactive(sim_trigger(), {
     set.seed(1234)
     # Sample "n" times from the annual catch data set, where "n" is the number of
     # non-commercial BF fishers in a given Year x County.
-    for (i in 1:200) {
+    for (i in 1:100) {
       # Update progress bar
-      incProgress(1/200, detail = paste("Iteration", i, "of", 200))
+      incProgress(1/100, detail = paste("Iteration", i, "of", 100))
       
       aSample <- f3_data %>% # Use f3_data instead of F3
         group_by(year, county) %>% 
@@ -189,11 +189,11 @@ output$species_plot <- renderPlotly({
 
 options <- extras() # currently only extra is if you want to plot underreporting
     
-# First create data for BFVR Non-Commercial
+# First create data for Non-commercial - BFVR approach
 non_commercial_data <- Final.all.sp() %>%
   group_by(year, species) %>% 
   summarise(catch = quantile(lbs_caught, .5)) %>% 
-  mutate(type = "BFVR Non-Commercial") %>%
+  mutate(type = "Non-commercial - BFVR approach") %>%
   filter(year < 2023)
   
 # Decide whether to include unreported CML based on proportion
@@ -201,7 +201,7 @@ if (options$prop_unreported > 0) {
   # Create data with both regular CML and unreported CML and NC
   local_cml_all_sp <- cml.all.sp %>%
     mutate(catch = (catch * options$prop_unreported) + (non_commercial_data$catch * options$prop_unreported),
-            type = "Unreported") %>% 
+            type = "Commercial - CML unreported") %>% 
     bind_rows(cml.all.sp)
   
   # Combine all data
@@ -210,12 +210,12 @@ if (options$prop_unreported > 0) {
   # Only include the regular CML data (no unreported)
   plot_data <- bind_rows(non_commercial_data, cml.all.sp)
 }
-
 # Set type of catch as a factor to control order of bars in plot
 # and set which colors to use for each type
-colors <- c("CML" = "#FC8D62", 
-            "Unreported" = "#8DA0CB", 
-            "BFVR Non-Commercial" = "#66C2A5")
+colors <- c("Commercial - CML reported" = "#FC8D62", 
+            "Commercial - CML unreported" = "#8DA0CB", 
+            "Non-commercial - BFVR approach" = "#66C2A5",
+            "2024 Assessment total catch" = "grey")
 
 # Get all unique years from the data to use as breaks
 all_years <- sort(unique(plot_data$year))
@@ -223,7 +223,8 @@ all_years <- sort(unique(plot_data$year))
 plot_data <- plot_data %>%
   left_join(SP.id, by = c("species" = "sp_frs_id")) %>% 
   filter(species != "d7") %>%
-  mutate(type = factor(type, levels = c("BFVR Non-Commercial", "Unreported", "CML"))) %>% 
+  mutate(type = factor(type, levels = c("Non-commercial - BFVR approach", 
+  "Commercial - CML unreported", "Commercial - CML reported"))) %>%
   distinct(year, species, type, .keep_all = TRUE) 
 
 # Create a list to store individual plots
@@ -231,14 +232,12 @@ plot_list <- list()
   # Basic layout settings for all plots
 base_layout <- list(
   xaxis = list(
-    #title = "Year",
     tickmode = "array",
     tickvals = all_years,
     ticktext = all_years,
-    tickangle = 0,
+    tickangle = -45,
     dtick = 1
   ),
-  #yaxis = list(title = "Catch (lbs)"),
   hovermode = "closest",
   legend = list(title = list(text = "Type")),
   margin = list(t = 70)  # Increase top margin for title
@@ -258,7 +257,8 @@ for (i in 1:length(common_name_vec)) {
 
       p <- plot_ly(data = facet_data, x = ~year, y = ~catch, color = ~type, 
                   type = "bar",
-                  colors = colors) %>%
+                  colors = colors,
+                  hovertemplate = "Year: %{x} <br> Catch (lbs): %{y}") %>%
             add_trace(data = tc.sp, x = ~year, y = ~catch, type = "scatter",
                     mode = "lines+markers",
                     line = list(color = "grey", width = 2),
@@ -280,7 +280,8 @@ for (i in 1:length(common_name_vec)) {
         xaxis = base_layout$xaxis,
         yaxis = list(
         title = "Catch (lbs)",
-        autorange = TRUE  
+        autorange = TRUE,
+        hoverformat = ".0f"  
         ),
         hovermode = base_layout$hovermode,
         margin = base_layout$margin,
@@ -297,8 +298,7 @@ p.sp <- subplot(
         titleX = FALSE,
         margin = 0.07  # Increase margin for titles
       ) %>%
-  layout(title = 'Catch by Species',
-  #layout = list(autosize = TRUE),
+  layout(
   annotations = list(
             list(
               text = "Catch (lbs)",
@@ -322,7 +322,7 @@ p.sp <- subplot(
           )) )
   p.sp
 
-})
+}) #end of species-specific plots
 
 # Create a total Deep7 plot
 output$combined_plot <- renderPlotly({
@@ -330,11 +330,11 @@ output$combined_plot <- renderPlotly({
 
 options <- extras()
 
-# First create the data for BFVR Non-Commercial
+# First create the data for Non-commercial - BFVR approach
 non_commercial_data <- Final.all() %>%
   group_by(year) %>% 
   summarise(catch = quantile(d7, .5)) %>% 
-  mutate(type = "BFVR Non-Commercial") %>%
+  mutate(type = "Non-commercial - BFVR approach") %>%
   filter(year < 2023)
   
 # Decide whether to include unreported CML based on proportion
@@ -342,7 +342,7 @@ if (options$prop_unreported > 0) {
   # Create data with both regular CML and unreported CML and NC
   local_cml_all <- cml.all %>%
   mutate(catch = (catch * options$prop_unreported) + (non_commercial_data$catch * options$prop_unreported), 
-  type = "Unreported") %>%
+  type = "Commercial - CML unreported") %>%
     bind_rows(cml.all)
   
   # Combine all data
@@ -355,10 +355,13 @@ if (options$prop_unreported > 0) {
 # Set type of catch as a factor to control order of bars in plot
 # and set which colors to use for each type
 plot_data <- plot_data %>%
-  mutate(type = factor(type, levels = c("BFVR Non-Commercial", "Unreported", "CML")))
-colors <- c("CML" = "#FC8D62", 
-            "Unreported" = "#8DA0CB", 
-            "BFVR Non-Commercial" = "#66C2A5")
+  mutate(type = factor(type, 
+  levels = c("Non-commercial - BFVR approach", "Commercial - CML unreported", 
+  "Commercial - CML reported")))
+colors <- c("Commercial - CML reported" = "#FC8D62", 
+            "Commercial - CML unreported" = "#8DA0CB", 
+            "Non-commercial - BFVR approach" = "#66C2A5",
+            "2024 Assessment total catch" = "grey")
 
 # Get all unique years from the data to use as breaks
 all_years <- sort(unique(plot_data$year))
@@ -366,7 +369,8 @@ all_years <- sort(unique(plot_data$year))
 # Create interactive plot with plot_ly
 p <-plot_ly(plot_data, x = ~year, y = ~catch, color = ~type, 
         type = "bar", 
-        colors = colors) %>% 
+        colors = colors,
+        hovertemplate = "Year: %{x} <br> Catch (lbs): %{y}") %>% 
     add_trace(data = tc.all, x = ~year, y = ~catch, type = "scatter",
         mode = "lines+markers",
         line = list(color = "grey", width = 2),
@@ -381,20 +385,26 @@ p <-plot_ly(plot_data, x = ~year, y = ~catch, color = ~type,
             tickangle = 0,
             dtick = 1
           ), 
-        barmode = 'stack') %>%
+          yaxis = list(
+          hoverformat = ".0f"
+          ),
+          legend = list(x = 1, y = 1,
+          xanchor = "right",
+          yanchor = "top"),
+          barmode = 'stack') %>%
     # Add text annotations for the annual sum above each bar
     add_annotations(
       data = plot_data %>% group_by(year) %>% summarize(total = sum(catch)),
       x = ~year,
       y = ~total,
-      text = ~paste("Total catch:\n ",format(total, big.mark = ","), "lbs"),
+      text = ~paste(format(total, big.mark = ","), "lbs"),
       showarrow = FALSE,
       yshift = 16,  # Adjust as needed to position text above bars
       font = list(size = 14)
     )
 
-})
+}) # end of Deep 7 catch plot
 
-}
+} #end of server
 
 
