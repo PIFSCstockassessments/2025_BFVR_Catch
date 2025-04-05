@@ -212,9 +212,9 @@ if (options$prop_unreported > 0) {
 }
 # Set type of catch as a factor to control order of bars in plot
 # and set which colors to use for each type
-colors <- c("Commercial - CML reported" = "#FC8D62", 
-            "Commercial - CML unreported" = "#8DA0CB", 
-            "Non-commercial - BFVR approach" = "#66C2A5",
+colors <- c("Commercial - CML reported" = "#F09008FF", 
+            "Commercial - CML unreported" = "#7868C0FF", 
+            "Non-commercial - BFVR approach" = "#488820FF",
             "2024 Assessment total catch" = "grey")
 
 # Get all unique years from the data to use as breaks
@@ -252,18 +252,29 @@ for (i in 1:length(common_name_vec)) {
     filter(common_name == current_sps)
   tc.sp <- tc.all.sp %>% 
   filter(common_name == current_sps)
+
+  facet_data$hover_text <- paste0("Year: ", facet_data$year, 
+                                 "<br>Catch: ", format(round(facet_data$catch/1000, 1), big.mark=","), 
+                                 "K")
+  
+  tc.sp$hover_text <- paste0("Year: ", tc.sp$year, 
+                            "<br>Total catch: ", format(round(tc.sp$catch/1000, 1), big.mark=","), 
+                            "K")
   
   # Create individual plot
 
       p <- plot_ly(data = facet_data, x = ~year, y = ~round(catch, digits = 0), color = ~type, 
                   type = "bar",
                   colors = colors,
-                  hovertemplate = "Year: %{x} <br> Catch (lbs): %{y}") %>%
+                  showlegend = (i ==1),
+                  text = ~hover_text,
+                  hoverinfo = "text") %>%
             add_trace(data = tc.sp, x = ~year, y = ~catch, type = "scatter",
                     mode = "lines+markers",
                     line = list(color = "grey", width = 2),
                     marker = list(color = "grey", size = 3),
-                    name = "Total catch used in the 2024 assessment") %>%
+                    name = "Total catch used in the 2024 assessment", showlegend = (i ==1),
+                    text = ~hover_text, hoverinfo = "text") %>%
         layout(
           annotations = list( 
               list( 
@@ -276,7 +287,7 @@ for (i in 1:length(common_name_vec)) {
                 yanchor = "bottom",  
                 showarrow = FALSE 
               )),
-        showlegend = (i == 1),  # Only show legend on first plot
+        #showlegend = FALSE, #(i == 7),  # Only show legend on first plot
         xaxis = base_layout$xaxis,
         yaxis = list(
         title = "Catch (lbs)",
@@ -303,7 +314,7 @@ p.sp <- subplot(
             list(
               text = "Catch (lbs)",
               textangle = -90,
-              x = -.03,       # Position from left edge
+              x = -.04,       # Position from left edge
               y = 0.5,        # Middle of plot area 
               xref = "paper",
               yref = "paper",
@@ -319,7 +330,10 @@ p.sp <- subplot(
               showarrow = FALSE,
               font = list(size = 14),
               yshift = -40  
-          )) )
+          )),
+    showlegend = TRUE, 
+    legend = list(orientation = "h",
+    x = 0.5, y = -0.1, xanchor = "center"))
   p.sp
 
 }) #end of species-specific plots
@@ -358,24 +372,36 @@ plot_data <- plot_data %>%
   mutate(type = factor(type, 
   levels = c("Non-commercial - BFVR approach", "Commercial - CML unreported", 
   "Commercial - CML reported")))
-colors <- c("Commercial - CML reported" = "#FC8D62", 
-            "Commercial - CML unreported" = "#8DA0CB", 
-            "Non-commercial - BFVR approach" = "#66C2A5",
+colors <- c("Commercial - CML reported" = "#F09008FF", 
+            "Commercial - CML unreported" = "#7868C0FF", 
+            "Non-commercial - BFVR approach" = "#488820FF",
             "2024 Assessment total catch" = "grey")
 
 # Get all unique years from the data to use as breaks
 all_years <- sort(unique(plot_data$year))
 
+plot_data$hover_text <- paste0("Year: ", plot_data$year, 
+                                "<br>Catch: ", format(round(plot_data$catch/1000, 1), big.mark=","), 
+                                "K")
+
+tc.all$hover_text <- paste0("Year: ", tc.all$year, 
+                        "<br>Total catch: ", format(round(tc.all$catch/1000, 1), big.mark=","), 
+                        "K")
+
 # Create interactive plot with plot_ly
-p <-plot_ly(plot_data, x = ~year, y = ~round(catch, digits = 0), color = ~type, 
+p <- plot_ly(plot_data, x = ~year, y = ~catch, color = ~type, 
         type = "bar", 
         colors = colors,
-        hovertemplate = "Year: %{x} <br> Catch (lbs): %{y}") %>% 
+        text = ~hover_text,
+        hoverinfo = "text") %>%     
     add_trace(data = tc.all, x = ~year, y = ~catch, type = "scatter",
         mode = "lines+markers",
         line = list(color = "grey", width = 2),
         marker = list(color = "grey", size = 3),
-        name = "Total catch used in the 2024 assessment") %>%
+        name = "Total catch used in the 2024 assessment", 
+        text = ~hover_text,
+        hoverinfo = "text"
+        ) %>%
     layout(yaxis = list(title = "Catch (lbs)"), 
           xaxis = list(
             title = "Year",
@@ -394,10 +420,10 @@ p <-plot_ly(plot_data, x = ~year, y = ~round(catch, digits = 0), color = ~type,
           barmode = 'stack') %>%
     # Add text annotations for the annual sum above each bar
     add_annotations(
-      data = plot_data %>% group_by(year) %>% summarize(total = round(sum(catch), digits = 0)),
+      data = plot_data %>% group_by(year) %>% summarize(total = round(sum(catch), digits = -3)),
       x = ~year,
       y = ~total,
-      text = ~paste(format(total, big.mark = ","), "lbs"),
+      text = ~paste0(total/1000, "K"),
       showarrow = FALSE,
       yshift = 16,  # Adjust as needed to position text above bars
       font = list(size = 14)
