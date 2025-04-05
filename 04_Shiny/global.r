@@ -8,7 +8,7 @@ library(data.table)
 library(ggthemes)
 library(plotly)
 
-QT_trip <- fread(file.path("data", "mrip_quantiles.csv")) %>%
+QT_trip <- fread(file.path( "data", "mrip_quantiles.csv")) %>%
         pivot_longer(cols = q90:max, names_to="quantiles", values_to="value")
 QT_annual <- fread(file.path("data", "lamson_quantiles.csv")) %>%
         pivot_longer(cols = q90:max, names_to="quantiles", values_to="value")

@@ -268,13 +268,15 @@ for (i in 1:length(common_name_vec)) {
                   colors = colors,
                   showlegend = (i ==1),
                   text = ~hover_text,
-                  hoverinfo = "text") %>%
+                  hoverinfo = "text",
+                  textposition = "none") %>%
             add_trace(data = tc.sp, x = ~year, y = ~catch, type = "scatter",
-                    mode = "lines+markers",
-                    line = list(color = "grey", width = 2),
-                    marker = list(color = "grey", size = 3),
-                    name = "Total catch used in the 2024 assessment", showlegend = (i ==1),
-                    text = ~hover_text, hoverinfo = "text") %>%
+                  mode = "lines+markers",
+                  line = list(color = "grey", width = 2),
+                  marker = list(color = "grey", size = 3),
+                  name = "Total catch used in the 2024 assessment", showlegend = (i ==1),
+                  text = ~hover_text, hoverinfo = "text",
+                  textposition = "none") %>%
         layout(
           annotations = list( 
               list( 
@@ -287,7 +289,6 @@ for (i in 1:length(common_name_vec)) {
                 yanchor = "bottom",  
                 showarrow = FALSE 
               )),
-        #showlegend = FALSE, #(i == 7),  # Only show legend on first plot
         xaxis = base_layout$xaxis,
         yaxis = list(
         title = "Catch (lbs)",
