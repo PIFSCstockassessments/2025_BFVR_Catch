@@ -8,17 +8,21 @@ library(data.table)
 library(ggthemes)
 library(plotly)
 
-QT_trip <- fread(file.path( "data", "mrip_quantiles.csv")) %>%
+# Load trip-level limits outputted from 02_MRIP_Interview_Catch.qmd
+QT_trip <- fread(file.path("data", "mrip_quantiles.csv")) %>%
         pivot_longer(cols = q90:max, names_to="quantiles", values_to="value")
+# Load annual-level limits from 03_Lamson_Annual_Catch.qmd
 QT_annual <- fread(file.path("data", "lamson_quantiles.csv")) %>%
         pivot_longer(cols = q90:max, names_to="quantiles", values_to="value")
 
 # Get species codes and names for plots
 SP.id <- QT_trip[,1:3]
 
+# Load fisher counts outputted from 01_Registered_fisher_list.qmd.
 FC <- fread(file.path("data", "Fisher_counts.csv")) %>%
         filter(cml_registr == "N")
 
+# Load FRS trip data outputted from 02_Annual_catch_from_BFVR.qmd
 F2 <- fread(file.path("data", "FRS_trips_annon.csv"))
 
 # Read in CML catches and tidy
@@ -33,6 +37,7 @@ cml.all <- cml %>%
           type = "Commercial - CML reported") %>% 
   select(c("year", "catch", "type"))
 
+# Load the total catches from the 2024 stock assessment
 TC <- fread(file.path("data", "Total_catches_2024.csv"))
 
 tc.all <- TC %>% 
