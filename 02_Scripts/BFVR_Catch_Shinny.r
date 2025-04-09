@@ -6,12 +6,12 @@ root_dir <- here(..=1)
 # Multiplier on the number of active BFVR non-commercial boats, to take into
 # account the percentage of unregistered boats.
 # Ranges from 25%-100% in app but for this script range from .25-1
-multiplier_unregistered <- 1
+percent_registered <- 90
 
 # Multiplier to BF-registered boats to remove inactive vessels
 # (i.e. not catching deep7) in a given year.
 # Range 0-100%
-proportion_inactive <- 0
+percent_inactive <- 10
 
 # FRS fishers to filter out
 only_bf_registered  <- "Y"  # Only keep BF-registered fishers
@@ -57,8 +57,8 @@ TC <- fread(file.path(root_dir, "03_Outputs", "Total_catches_2024.csv"))
 
 #======================Modify the number of active BFVR vessels===========
 
-FC$n_bf_fishers <- FC$n_bf_fishers - (FC$n_bf_fishers * (proportion_inactive/100))
-FC$n_bf_fishers <- FC$n_bf_fishers*(1/multiplier_unregistered)
+FC$n_bf_fishers <- FC$n_bf_fishers - (FC$n_bf_fishers * percent_inactive/100)
+FC$n_bf_fishers <- FC$n_bf_fishers + FC$n_bf_fishers*(1-percent_registered/100)
 
 #=========================================================================
 
