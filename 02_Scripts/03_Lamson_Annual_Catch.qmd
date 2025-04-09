@@ -13,8 +13,7 @@ This script is to obtain the distribution of Deep7 and total per-trip catches fo
 
 ```{r}
 suppressWarnings( require(pacman,quietly=T) )
-pacman::p_load("tidyverse","data.table","this.path",
-               "readxl","janitor","flextable","ggridges")
+pacman::p_load("tidyverse","data.table","this.path","readxl")
 
 root_dir <- here(..=1)
 
@@ -33,6 +32,9 @@ LM <-fread(
                 sell_bf=Q21,
                 s21=Q62, s97=Q66, s15=Q70, s17=Q74,
                 s58=Q78, s22=Q82, s19=Q86, s20=Q90) %>% as.data.table()
+
+SP <- fread( fs::path(root_dir,"01_Data","mrip_mean_weights.csv")) %>% 
+         select(sci_name,sp_frs_id)
 ```
 
 Let's convert code "99" and "no" to NA and make all columns numeric.
@@ -64,25 +66,43 @@ LM <- LM %>%
 Now let's calculate the quantile of these annual catches, for non-CML fishers.
 
 ```{r}
-LM <- LM %>% filter(sell_bf==2) 
+LM <- LM %>% left_join(SP,by="sp_frs_id") %>% 
+  mutate(sci_name=if_else(sp_frs_id=="allBF","allBF",sci_name),
+         sci_name=if_else(sp_frs_id=="d7","Deep7",sci_name))
 
-Qt.sp <- LM %>% group_by(sp_frs_id) %>%
+# Filter for "never sell" and remove zero annual catches.
+LM <- LM %>% filter(sell_bf==2,lbs_caught>0) 
+
+Qt.sp <- LM %>% group_by(sci_name,sp_frs_id) %>%
   reframe(quant=round(quantile(lbs_caught,c(0.90,0.95,0.99,1)),0),
           quantile=c("q90","q95","q99","max")) %>% 
   pivot_wider(id_cols=,names_from=quantile,values_from=quant) 
 
-Qt.sp$sci_name  <- c("All BF",
-                     "Deep7",
-                     "Hyporthodus quernus",
-                     "Pristipomoides sieboldii",
-                     "Pristipomoides filamentosus",
-                     "Aprion virescens",
-                     "Etelis carbunculus",
-                     "Etelis coruscans",
-                     "Aphareus rutilans",
-                     "Pristipomoides zonatus")
-
 Qt.sp <- Qt.sp %>% select(sci_name,sp_frs_id,q90:max)
 
 write_csv(Qt.sp,file.path(root_dir,"03_Outputs","lamson_quantiles.csv"))
+```
+
+Let's create some plots.
+
+```{r}
+# Remove rare species and uku.
+LMS <- LM %>% filter(!(sp_frs_id %in% c("allBF","s58","s15")))
+QS <- Qt.sp %>% filter(!(sp_frs_id %in% c("allBF","s58","s15")))
+
+# Per-species in pounds
+ggplot(data=LMS,aes(x=lbs_caught))+
+  geom_histogram()+
+  geom_vline(data=QS,aes(xintercept=q90),col="red")+
+  geom_vline(data=QS,aes(xintercept=q95),col="darkorange")+
+  geom_vline(data=QS,aes(xintercept=q99),col="darkgreen")+
+  geom_text(data=QS,aes(label=q90,x=q90,y=Inf),hjust=1.2,vjust=2)+
+  geom_text(data=QS,aes(label=q95,x=q95,y=Inf,),hjust=0.8,vjust=2)+
+  geom_text(data=QS,aes(label=q99,x=q99,y=Inf),hjust=0.5,vjust=2)+
+  facet_wrap(~sci_name,scales="free")+
+  theme_bw(base_size=16)+
+  labs(x="Annual pounds caught",y="Number of fishers")
+
+ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","Lamson_Sp_Lbs_Caught.png"),
+       height=8,width=10,dpi=300)
 ```
