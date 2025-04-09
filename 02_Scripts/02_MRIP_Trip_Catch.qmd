@@ -68,25 +68,21 @@ IT <- IT %>% mutate(lbs_caught=num_caught*mrip_mean_lbs) %>%
 Let's see what the distributions look like globally.
 
 ```{r}
+# Let's first calculate the Deep7 catch per trip
+IT.D7 <- IT %>% filter(sp_frs_id!="s20") %>% group_by(trip_id, year) %>%
+            summarize(num_caught=sum(num_caught),lbs_caught=sum(lbs_caught)) %>% 
+            mutate(sci_name="Deep7",sp_frs_id="d7",sp_mrip_id=999999)
+
+# Add the Deep7 catch to the species-level catch.
+IT <- IT %>% rbind(IT.D7)
+
 # Catch quantiles, per species and positive catch only.
 Qt.sp <- IT %>% group_by(sp_frs_id) %>%
   reframe(quant=round(quantile(lbs_caught,c(0.90,0.95,0.99,1)),0),
                       quantile=c("q90","q95","q99","max")) %>%
   pivot_wider(id_cols=,names_from=quantile,values_from=quant)
 
-# Catch quantiles for D7 catch (positive-only)
-IT.D7 <- IT %>% filter(sp_frs_id!="s20") %>% group_by(trip_id, year) %>%
-            summarize(num_caught=sum(num_caught),lbs_caught=sum(lbs_caught))
-
-Qt.D7 <- IT.D7 %>% group_by() %>% 
-  reframe(quant=round(quantile(lbs_caught,c(0.90,0.95,0.99,1)),0),
-          quantile=c("q90","q95","q99","max")) %>% 
-              pivot_wider(names_from=quantile,values_from=quant)
-
-# Put everything back together.
-Qt.D7$sp_frs_id <- "d7"
-
-Final <- rbind(Qt.sp,Qt.D7) %>% left_join(SP,by="sp_frs_id") %>%
+Final <- Qt.sp %>% left_join(SP,by="sp_frs_id") %>%
   select(sci_name,sp_frs_id,q90,q95,q99,max) %>% as.data.table()
 
 Final[is.na(sci_name)]$sci_name <- "Deep7"
@@ -97,24 +93,36 @@ write_csv(Final,fs::path(root_dir,"03_Outputs","mrip_quantiles.csv"))
 Some plots.
 
 ```{r}
-# Remove rare species.
-ITS <- IT %>% filter(!(sp_frs_id %in% c("s20","s58","s15")))
+# Remove rare species and uku.
+ITS <- IT %>% filter(!(sp_frs_id %in% c("s58","s15")))
 FS  <- Final %>% filter(!(sp_frs_id %in% c("s58","s15")))
 
 # Per-species in numbers
 ggplot(data=ITS,aes(x=num_caught))+
   geom_histogram(binwidth=1)+
-  #geom_vline(data=FS[sci_name!="Deep7"],aes(xintercept=Q99),col="red")+
   facet_wrap(~sci_name,scales="free")+
-  theme_minimal(base_size=16)+
+  theme_bw(base_size=16)+
   labs(x="Number caught per trip",y="Number of trips")
 
 ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","MRIP_Sp_Num_Caught.png"),
-       height=4,width=8,dpi=300)
+       height=5,width=10,dpi=300)
     
-# Per-spcies in pounds
-ggplot(data=IT,aes(x=lbs_caught))+geom_histogram(binwidth=2)+
-  facet_wrap(~sci_name,scales="free")
+# Per-species in pounds
+ggplot(data=ITS,aes(x=lbs_caught))+
+  geom_histogram()+
+  geom_vline(data=FS,aes(xintercept=q90),col="red")+
+  geom_vline(data=FS,aes(xintercept=q95),col="darkorange")+
+  geom_vline(data=FS,aes(xintercept=q99),col="darkgreen")+
+  geom_text(data=FS,aes(label=q90,x=q90,y=Inf),hjust=1.2,vjust=2)+
+  geom_text(data=FS,aes(label=q95,x=q95,y=Inf,),hjust=0.8,vjust=2)+
+  geom_text(data=FS,aes(label=q99,x=q99,y=Inf),hjust=0.5,vjust=2)+
+  facet_wrap(~sci_name,scales="free")+
+  theme_bw(base_size=16)+
+  labs(x="Pounds caught per trip",y="Number of trips")
+
+ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","MRIP_Sp_Lbs_Caught.png"),
+       height=8,width=10,dpi=300)
+    
   
 # D7 totals
 ggplot(data=IT.D7,aes(x=num_caught)) + geom_histogram(binwidth=1)
@@ -124,6 +132,6 @@ ggplot(data=IT.D7,aes(x=lbs_caught)) + geom_histogram(binwidth=5) +
   labs(x="Deep7 catch per trip (lbs)",y="Number of trips")
 
 ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","MRIP_D7_Lbs_Caught.png"),
-       height=4,width=8)
+       height=6,width=8)
    
 ```
