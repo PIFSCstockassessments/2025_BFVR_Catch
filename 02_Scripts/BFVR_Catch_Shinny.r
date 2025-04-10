@@ -6,12 +6,12 @@ root_dir <- here(..=1)
 # Multiplier on the number of active BFVR non-commercial boats, to take into
 # account the percentage of unregistered boats.
 # Ranges from 25%-100% in app but for this script range from .25-1
-percent_registered <- 90
+percent_registered <- 100
 
 # Multiplier to BF-registered boats to remove inactive vessels
 # (i.e. not catching deep7) in a given year.
 # Range 0-100%
-percent_inactive <- 10
+percent_inactive <- 0
 
 # FRS fishers to filter out
 only_bf_registered  <- "Y"  # Only keep BF-registered fishers
@@ -23,9 +23,12 @@ selected_quantile <- c("q90","q95","q99","max")[3]
 # What percentage of commercial catch is unreported
 percent_unreported <- 0
 
+# What filters to use "Deep7 only" or "All taxa".
+which_filter_taxa_level <- c("Deep7 only","All taxa")[2]
+
 # At which level should catch data be filtered, trip (MRIP), annual (Lamson),
 # or both?
-which_filter_level <- "Trip"
+which_filter_level <- c("Trip","Annual","Both")[1]
 #=======================================================
 
 #================Load data==============================
@@ -97,19 +100,25 @@ tc.all.sp <- TC %>%
 # Apply trip-level filters to classify fishers as comm. (1) vs non-comm. (0).
 F2$trip_type <- 0
 
-if(which_filter_level == "Trip" | which_filter_level == "Both"){
-  QT_trip <- QT_trip %>% 
-  filter(quantiles==selected_quantile) %>% 
+QT_trip <- QT_trip %>% filter(quantiles==selected_quantile) %>% 
   as.data.table() 
-  F2[d7  > QT_trip[sp_frs_id=="d7"]$value|
-    s17 > QT_trip[sp_frs_id=="s17"]$value| 
-    s19 > QT_trip[sp_frs_id=="s19"]$value| 
-    s21 > QT_trip[sp_frs_id=="s21"]$value|
-    s22 > QT_trip[sp_frs_id=="s22"]$value|
-    s97 > QT_trip[sp_frs_id=="s97"]$value| 
-    s20 > QT_trip[sp_frs_id=="s20"]$value 
-    ]$trip_type <- 1
+
+if(which_filter_level == "Trip" | which_filter_level == "Both") {
+ 
+   F2[d7 > QT_trip[sp_frs_id=="d7"]$value]$trip_type <- 1
+  
+ if(which_filter_taxa_level == "All taxa" ){
+  
+     F2[s17 > QT_trip[sp_frs_id=="s17"]$value| 
+        s19 > QT_trip[sp_frs_id=="s19"]$value| 
+        s21 > QT_trip[sp_frs_id=="s21"]$value|
+        s22 > QT_trip[sp_frs_id=="s22"]$value|
+        s97 > QT_trip[sp_frs_id=="s97"]$value| 
+        s20 > QT_trip[sp_frs_id=="s20"]$value 
+       ]$trip_type <- 1
+  }
 }
+
 # Sum catches from trip-level data to annual-level per fisher.
 F3 <- F2 %>% group_by(year, cml_no.fs, bf_registr, cml_registr, county) %>%
   summarize_if(is.numeric, sum)
@@ -121,17 +130,23 @@ F3 <- F3 %>% mutate(fisher_type=if_else(trip_type > 0,"Comm","NC")) %>%
 # Apply the annual-level filters to classify fishers as comm. vs non-comm.
 F3$annual_type <- "NC"
 
+QT_annual <- QT_annual %>% filter(quantiles == selected_quantile) %>%
+  as.data.table()
+
 if(which_filter_level == "Annual" | which_filter_level == "Both"){
-  QT_annual <- QT_annual %>% 
-      filter(quantiles == selected_quantile) %>% as.data.table()
-  F3[d7  > QT_annual[sp_frs_id=="d7"]$value|
-    s17 > QT_annual[sp_frs_id=="s17"]$value| 
-    s19 > QT_annual[sp_frs_id=="s19"]$value| 
-    s21 > QT_annual[sp_frs_id=="s21"]$value|
-    s22 > QT_annual[sp_frs_id=="s22"]$value|
-    s97 > QT_annual[sp_frs_id=="s97"]$value| 
-    s20 > QT_annual[sp_frs_id=="s20"]$value 
-    ]$annual_type <- "Comm"
+  
+  F3[d7 > QT_annual[sp_frs_id=="d7"]$value]$annual_type <- "Comm"
+  
+  if(which_filter_taxa_level == "All taxa" ){
+  
+    F3[s17 > QT_annual[sp_frs_id=="s17"]$value| 
+       s19 > QT_annual[sp_frs_id=="s19"]$value| 
+       s21 > QT_annual[sp_frs_id=="s21"]$value|
+       s22 > QT_annual[sp_frs_id=="s22"]$value|
+       s97 > QT_annual[sp_frs_id=="s97"]$value| 
+       s20 > QT_annual[sp_frs_id=="s20"]$value 
+      ]$annual_type <- "Comm"
+   }
 }
 
 F3 <- F3 %>% mutate(fisher_type=if_else(annual_type=="Comm","Comm",fisher_type))
@@ -278,4 +293,7 @@ ggplot(data = plot_data_all)+
   labs(y="Year",x="Catch (lbs)")+
   scale_fill_manual(values = colors) +
   scale_color_manual(values = colors)
+
+
+plot_data_all %>% filter(type=="Non-commercial - BFVR approach") %>% group_by() %>% summarize(lbs=mean(catch))
       
