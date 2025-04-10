@@ -34,7 +34,7 @@ LM <-fread(
                 s58=Q78, s22=Q82, s19=Q86, s20=Q90) %>% as.data.table()
 
 SP <- fread( fs::path(root_dir,"01_Data","mrip_mean_weights.csv")) %>% 
-         select(sci_name,sp_frs_id)
+         select(sci_name,common_name,sp_frs_id)
 ```
 
 Let's convert code "99" and "no" to NA and make all columns numeric.
@@ -68,17 +68,19 @@ Now let's calculate the quantile of these annual catches, for non-CML fishers.
 ```{r}
 LM <- LM %>% left_join(SP,by="sp_frs_id") %>% 
   mutate(sci_name=if_else(sp_frs_id=="allBF","allBF",sci_name),
-         sci_name=if_else(sp_frs_id=="d7","Deep7",sci_name))
+         sci_name=if_else(sp_frs_id=="d7","Deep7",sci_name),
+         common_name=if_else(sp_frs_id=="allBF","allBF",common_name),
+         common_name=if_else(sp_frs_id=="d7","Deep7",common_name))
 
 # Filter for "never sell" and remove zero annual catches.
 LM <- LM %>% filter(sell_bf==2,lbs_caught>0) 
 
-Qt.sp <- LM %>% group_by(sci_name,sp_frs_id) %>%
+Qt.sp <- LM %>% group_by(sci_name,common_name,sp_frs_id) %>%
   reframe(quant=round(quantile(lbs_caught,c(0.90,0.95,0.99,1)),0),
           quantile=c("q90","q95","q99","max")) %>% 
   pivot_wider(id_cols=,names_from=quantile,values_from=quant) 
 
-Qt.sp <- Qt.sp %>% select(sci_name,sp_frs_id,q90:max)
+Qt.sp <- Qt.sp %>% select(sci_name,common_name,sp_frs_id,q90:max)
 
 write_csv(Qt.sp,file.path(root_dir,"03_Outputs","lamson_quantiles.csv"))
 ```
