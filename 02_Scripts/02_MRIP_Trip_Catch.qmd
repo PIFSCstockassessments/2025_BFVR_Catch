@@ -61,8 +61,8 @@ IT <- IT %>%
               year=lubridate::year(interview_date))
 
 IT <- IT %>% mutate(lbs_caught=num_caught*mrip_mean_lbs) %>% 
-           select(trip_id,year,sci_name,sp_frs_id,
-           sp_mrip_id,num_caught,lbs_caught)
+           select(trip_id,year,sci_name,common_name,sp_frs_id,
+             sp_mrip_id,num_caught,lbs_caught)
 ```
 
 Let's see what the distributions look like globally.
@@ -71,7 +71,8 @@ Let's see what the distributions look like globally.
 # Let's first calculate the Deep7 catch per trip
 IT.D7 <- IT %>% filter(sp_frs_id!="s20") %>% group_by(trip_id, year) %>%
             summarize(num_caught=sum(num_caught),lbs_caught=sum(lbs_caught)) %>% 
-            mutate(sci_name="Deep7",sp_frs_id="d7",sp_mrip_id=999999)
+            mutate(sci_name="Deep7",sp_frs_id="d7",common_name="Deep7",
+                   sp_mrip_id=999999)
 
 # Add the Deep7 catch to the species-level catch.
 IT <- IT %>% rbind(IT.D7)
@@ -83,9 +84,11 @@ Qt.sp <- IT %>% group_by(sp_frs_id) %>%
   pivot_wider(id_cols=,names_from=quantile,values_from=quant)
 
 Final <- Qt.sp %>% left_join(SP,by="sp_frs_id") %>%
-  select(sci_name,sp_frs_id,q90,q95,q99,max) %>% as.data.table()
+  select(sci_name,common_name,sp_frs_id,q90,q95,q99,max) %>% as.data.table()
 
-Final[is.na(sci_name)]$sci_name <- "Deep7"
+Final[is.na(sci_name)]$sci_name       <- "Deep7"
+Final[is.na(common_name)]$common_name <- "Deep7"
+
 
 write_csv(Final,fs::path(root_dir,"03_Outputs","mrip_quantiles.csv"))
 ```
