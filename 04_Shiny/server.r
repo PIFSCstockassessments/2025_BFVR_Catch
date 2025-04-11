@@ -200,7 +200,7 @@ non_commercial_data <- Final.all.sp() %>%
 if (options$prop_unreported > 0) {
   # Create data with both regular CML and unreported CML and NC
   local_cml_all_sp <- cml.all.sp %>%
-    mutate(catch = (catch * options$prop_unreported) + (non_commercial_data$catch * options$prop_unreported),
+    mutate(catch = (catch * options$prop_unreported),
             type = "Commercial - CML unreported") %>% 
     bind_rows(cml.all.sp)
   
@@ -356,7 +356,7 @@ non_commercial_data <- Final.all() %>%
 if (options$prop_unreported > 0) {
   # Create data with both regular CML and unreported CML and NC
   local_cml_all <- cml.all %>%
-  mutate(catch = (catch * options$prop_unreported) + (non_commercial_data$catch * options$prop_unreported), 
+  mutate(catch = (catch * options$prop_unreported), 
   type = "Commercial - CML unreported") %>%
     bind_rows(cml.all)
   
