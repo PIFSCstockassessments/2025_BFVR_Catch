@@ -20,18 +20,18 @@ return(Sys.time())
 # In server
 data_prep <- eventReactive(sim_trigger(), {
     
-    proportion_inactive <- input$proportion_inactive 
+    percent_inactive <- (input$percent_inactive/100)
     only_bf_registered <- input$only_bf_registered 
     selected_quantile <- input$selected_quantile
     filter_id <- input$which_filter_level
-    multiplier_unregistered <- (input$multiplier_unregistered/100)
+    percent_unregistered <- (input$percent_unregistered/100)
     
     # Apply the correction related to the assumed # of BF registered fishers 
     # catching at least one deep7 in any given year
     # and the percentage of boats that are not registered in the BFVR
     FC_sim <- FC %>% 
-        mutate(n_bf_fishers = n_bf_fishers - (n_bf_fishers * (proportion_inactive/100)),
-        n_bf_fishers = n_bf_fishers * (1/multiplier_unregistered)) 
+        mutate(n_bf_fishers = n_bf_fishers - (n_bf_fishers * percent_inactive),
+        n_bf_fishers = n_bf_fishers + n_bf_fishers * (1 - percent_unregistered)) 
 
     # Create a new column for future data manipulation
     F2$trip_type <- 0

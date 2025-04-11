@@ -67,24 +67,25 @@ ui <- page(
           # SEPARATOR
           hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"),
           
+          sliderInput("percent_inactive",
+            label = tooltip("What percentage of BF-registered 
+            boats are not actively trying to catch Deep7 in any given year?",
+            "This is the percentage of boats that are registered in the BFVR
+            but never go fishing for Deep7 or are simply not fishing.", 
+            placement = "right"), 
+            min = 0, max = 100, value = 0, step = 10, post = "%"), 
+
           h4("Number of active non-commercial fishers"),
           
-          sliderInput("multiplier_unregistered", 
-                        label = tooltip("What percentage of boats fishing for Deep7 are registered in the BFVR?",
+          sliderInput("percent_unregistered", 
+                        label = tooltip("Of the boats actively fishing for Deep7, what percentage of 
+                        boats are registered in the BFVR?",
                         "Based on your experience, how often do you see or hear about vessels fishing for Deep7
                         that are not registered in the BFVR?",
                         placement = "right"
                         ),
                      min = 25, max = 100, value = 100, step = 25, post = "%"),
-          
-          sliderInput("proportion_inactive",
-                      label = tooltip("What percentage of BF-registered 
-                     boats are not catching Deep7 in any given year?",
-                     "This is the percentage of boats that are registered in the BFVR
-                     but never go fishing for Deep7 or are simply not fishing.", 
-                     placement = "right"), 
-                     min = 0, max = 100, value = 0, step = 10, post = "%"), 
-          
+   
           # SEPARATOR
           hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"),
           
