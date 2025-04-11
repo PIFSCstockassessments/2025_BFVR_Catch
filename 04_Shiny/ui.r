@@ -96,6 +96,11 @@ ui <- page(
                      choices = c("Yes" = "Y", "No" = "N"), 
                      selected = "Y"),
           
+          radioButtons("which_filter_taxa_level",
+                      "Should we classify fishers based only on their total Deep7 catch or also their catch by species?",
+                      choices = c("Deep7 only", "All taxa"), 
+                      selected = "All taxa"),
+
           selectInput("which_filter_level",
                     label = tooltip("At what level should we filter the catch data?",
                     "Should we use MRIP trip-level interviews and/or annual catch

@@ -23,7 +23,8 @@ data_prep <- eventReactive(sim_trigger(), {
     percent_inactive <- (input$percent_inactive/100)
     only_bf_registered <- input$only_bf_registered 
     selected_quantile <- input$selected_quantile
-    filter_id <- input$which_filter_level
+    filter_level_id <- input$which_filter_level
+    filter_taxa_id <- input$which_filter_taxa_level
     percent_unregistered <- (input$percent_unregistered/100)
     
     # Apply the correction related to the assumed # of BF registered fishers 
@@ -36,18 +37,23 @@ data_prep <- eventReactive(sim_trigger(), {
     # Create a new column for future data manipulation
     F2$trip_type <- 0
 
-    if(filter_id == "Trip" | filter_id == "Both"){
+    if(filter_level_id == "Trip" | filter_level_id == "Both"){
       QT_trip <- QT_trip %>% 
         filter(quantiles == selected_quantile) %>% 
         as.data.table()
-      F2[d7  > QT_trip[sp_frs_id=="d7"]$value|
-      s17 > QT_trip[sp_frs_id=="s17"]$value| 
-      s19 > QT_trip[sp_frs_id=="s19"]$value| 
-      s21 > QT_trip[sp_frs_id=="s21"]$value|
-      s22 > QT_trip[sp_frs_id=="s22"]$value|
-      s97 > QT_trip[sp_frs_id=="s97"]$value| 
-      s20 > QT_trip[sp_frs_id=="s20"]$value 
-      ]$trip_type <- 1
+        
+      F2[d7 > QT_trip[sp_frs_id=="d7"]$value]$trip_type <- 1
+      
+      if(which_filter_taxa_level == "All taxa" ){
+  
+        F2[s17 > QT_trip[sp_frs_id=="s17"]$value| 
+            s19 > QT_trip[sp_frs_id=="s19"]$value| 
+            s21 > QT_trip[sp_frs_id=="s21"]$value|
+            s22 > QT_trip[sp_frs_id=="s22"]$value|
+            s97 > QT_trip[sp_frs_id=="s97"]$value| 
+            s20 > QT_trip[sp_frs_id=="s20"]$value 
+          ]$trip_type <- 1
+      }
     }
 
      # Sum catches to annual-level per fisher
@@ -65,14 +71,19 @@ data_prep <- eventReactive(sim_trigger(), {
     if(filter_id == "Annual" | filter_id == "Both"){
       QT_annual <- QT_annual %>% 
           filter(quantiles == selected_quantile) %>% as.data.table()
-          F3[d7  > QT_annual[sp_frs_id=="d7"]$value|
-            s17 > QT_annual[sp_frs_id=="s17"]$value| 
+
+      F3[d7 > QT_annual[sp_frs_id=="d7"]$value]$annual_type <- "Comm"
+        
+        if(which_filter_taxa_level == "All taxa" ){
+        
+          F3[s17 > QT_annual[sp_frs_id=="s17"]$value| 
             s19 > QT_annual[sp_frs_id=="s19"]$value| 
             s21 > QT_annual[sp_frs_id=="s21"]$value|
             s22 > QT_annual[sp_frs_id=="s22"]$value|
             s97 > QT_annual[sp_frs_id=="s97"]$value| 
             s20 > QT_annual[sp_frs_id=="s20"]$value 
             ]$annual_type <- "Comm"
+        }
     }
     F3 <- F3 %>% 
     mutate(fisher_type=if_else(annual_type=="Comm","Comm",fisher_type))
