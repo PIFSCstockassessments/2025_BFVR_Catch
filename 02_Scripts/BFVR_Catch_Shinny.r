@@ -5,7 +5,7 @@ root_dir <- here(..=1)
 #============User inputs=================================
 # Multiplier on the number of active BFVR non-commercial boats, to take into
 # account the percentage of unregistered boats.
-# Ranges from 25%-100% in app but for this script range from .25-1
+# Ranges from 25%-100% in the app.
 percent_registered <- 100
 
 # Multiplier to BF-registered boats to remove inactive vessels
@@ -28,7 +28,7 @@ which_filter_taxa_level <- c("Deep7 only","All taxa")[2]
 
 # At which level should catch data be filtered, trip (MRIP), annual (Lamson),
 # or both?
-which_filter_level <- c("Trip","Annual","Both")[1]
+which_filter_level <- c("Trip","Annual","Both")[2]
 #=======================================================
 
 #================Load data==============================
