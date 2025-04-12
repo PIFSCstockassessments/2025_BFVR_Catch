@@ -208,7 +208,7 @@ non_commercial_data <- Final.all.sp %>%
 if (percent_unreported > 0) {
   # Create data with both regular CML and unreported CML and NC
   local_cml_all_sp <- cml.all.sp %>%
-    mutate(catch = (catch * options$prop_unreported) + (non_commercial_data$catch * options$prop_unreported),
+    mutate(catch = (catch * options$prop_unreported),
             type = "Commercial - CML unreported") %>% 
     bind_rows(cml.all.sp)
   
@@ -264,7 +264,7 @@ non_commercial_data_all <- Final.all %>%
 if (percent_unreported > 0) {
   # Create data with both regular CML and unreported CML and NC
   local_cml_all <- cml.all %>%
-  mutate(catch = (catch * options$prop_unreported) + (non_commercial_data_all$catch * options$prop_unreported), 
+  mutate(catch = (catch * options$prop_unreported), 
   type = "Commercial - CML unreported") %>%
     bind_rows(cml.all)
   
@@ -297,3 +297,18 @@ ggplot(data = plot_data_all)+
 
 plot_data_all %>% filter(type=="Non-commercial - BFVR approach") %>% group_by() %>% summarize(lbs=mean(catch))
       
+model_management_table <- plot_data_all %>% group_by(year) %>% 
+  summarise(total_catch = sum(catch)) %>% 
+  summarise(mean_catch = mean(total_catch)/1000) %>%
+  mutate(biomass_2023 =( 0.022957 * mean_catch + 1.502262),
+          ACL = 2.26047 * mean_catch + 15.97866,
+          recent_catch = recent_catch/1000,
+          percent_acl = (recent_catch/ACL)) 
+
+data.frame("type" = c("ACL (total catch)", "Recent catch", "Recent catch relative to ACL"),
+"Assessment_2024" = c(1105027, 395400, .36), 
+"New_Scenario" = c(model_management_table$ACL*1000, model_management_table$recent_catch*1000,
+model_management_table$percent_acl)) %>% 
+column_to_rownames("type") %>%
+flextable() 
+
