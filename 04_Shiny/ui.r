@@ -65,8 +65,10 @@ ui <- page(
                       min = 0, max = 100, value = 0, step = 10, post = "%"),
           
           # SEPARATOR
-          hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"),
-          
+          hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"), 
+
+          h4("Number of active non-commercial fishers"),
+
           sliderInput("percent_inactive",
             label = tooltip("What percentage of BF-registered 
             boats are not actively trying to catch Deep7 in any given year?",
@@ -74,8 +76,6 @@ ui <- page(
             but never go fishing for Deep7 or are simply not fishing.", 
             placement = "right"), 
             min = 0, max = 100, value = 0, step = 10, post = "%"), 
-
-          h4("Number of active non-commercial fishers"),
           
           sliderInput("percent_unregistered", 
                         label = tooltip("Of the boats actively fishing for Deep7, what percentage of 
@@ -123,13 +123,23 @@ ui <- page(
           
           actionButton("run_analysis", "Run Analysis", class = "btn-primary")
         ),
-  
-    card(
-        card_header("Deep7 Catch by Year"),
-        card_body(
-          plotlyOutput("combined_plot")
+    layout_columns(
+      card(
+          card_header("Deep7 Catch by Year"),
+          card_body(
+            plotlyOutput("combined_plot")
+          )
+      ),
+      layout_columns(
+        card(
+          card_header("ACL Table"),
+          card_body(
+            reactable::reactableOutput("acl_table")
+          )
         )
+      )
     ),
+
     card(
       card_header("Deep7 Catch by Species"),
       card_body(

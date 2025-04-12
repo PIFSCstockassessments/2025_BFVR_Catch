@@ -7,6 +7,10 @@ library(tidyverse)
 library(data.table)
 library(ggthemes)
 library(plotly)
+library(scales)
+library(reactable)
+
+
 
 # Load trip-level limits outputted from 02_MRIP_Interview_Catch.qmd
 QT_trip <- fread(file.path("data", "mrip_quantiles.csv")) %>%

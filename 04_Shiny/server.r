@@ -41,10 +41,10 @@ data_prep <- eventReactive(sim_trigger(), {
       QT_trip <- QT_trip %>% 
         filter(quantiles == selected_quantile) %>% 
         as.data.table()
-        
+
       F2[d7 > QT_trip[sp_frs_id=="d7"]$value]$trip_type <- 1
       
-      if(which_filter_taxa_level == "All taxa" ){
+      if(filter_taxa_id == "All taxa" ){
   
         F2[s17 > QT_trip[sp_frs_id=="s17"]$value| 
             s19 > QT_trip[sp_frs_id=="s19"]$value| 
@@ -68,13 +68,13 @@ data_prep <- eventReactive(sim_trigger(), {
     # Apply the annual-level filters to classify fishers as comm. vs non-comm.
     F3$annual_type <- "NC"
 
-    if(filter_id == "Annual" | filter_id == "Both"){
+    if(filter_level_id == "Annual" | filter_level_id == "Both"){
       QT_annual <- QT_annual %>% 
           filter(quantiles == selected_quantile) %>% as.data.table()
 
       F3[d7 > QT_annual[sp_frs_id=="d7"]$value]$annual_type <- "Comm"
         
-        if(which_filter_taxa_level == "All taxa" ){
+        if(filter_taxa_id == "All taxa" ){
         
           F3[s17 > QT_annual[sp_frs_id=="s17"]$value| 
             s19 > QT_annual[sp_frs_id=="s19"]$value| 
@@ -350,98 +350,187 @@ p.sp <- subplot(
 
 }) #end of species-specific plots
 
-# Create a total Deep7 plot
-output$combined_plot <- renderPlotly({
+# Create the dataframe that will be shared for Deep7 plot and ACL table
+total_catch_df <- reactive({
   req(Final.all())
 
-options <- extras()
+  options <- extras()
 
-# First create the data for Non-commercial - BFVR approach
-non_commercial_data <- Final.all() %>%
-  group_by(year) %>% 
-  summarise(catch = quantile(d7, .5)) %>% 
-  mutate(type = "Non-commercial - BFVR approach") %>%
-  filter(year < 2023)
-  
-# Decide whether to include unreported CML based on proportion
-if (options$prop_unreported > 0) {
-  # Create data with both regular CML and unreported CML and NC
-  local_cml_all <- cml.all %>%
-  mutate(catch = (catch * options$prop_unreported), 
-  type = "Commercial - CML unreported") %>%
-    bind_rows(cml.all)
-  
-  # Combine all data
-  plot_data <- bind_rows(non_commercial_data, local_cml_all)
-} else {
-  # Only include the regular CML data (no unreported)
-  plot_data <- bind_rows(non_commercial_data, cml.all) 
-}
+  # First create the data for Non-commercial - BFVR approach
+  non_commercial_data <- Final.all() %>%
+    group_by(year) %>% 
+    summarise(catch = quantile(d7, .5)) %>% 
+    mutate(type = "Non-commercial - BFVR approach") %>%
+    filter(year < 2023)
+    
+  # Decide whether to include unreported CML based on proportion
+  if (options$prop_unreported > 0) {
+    # Create data with both regular CML and unreported CML and NC
+    local_cml_all <- cml.all %>%
+    mutate(catch = (catch * options$prop_unreported), 
+    type = "Commercial - CML unreported") %>%
+      bind_rows(cml.all)
+    
+    # Combine all data
+    plot_data <- bind_rows(non_commercial_data, local_cml_all)
+  } else {
+    # Only include the regular CML data (no unreported)
+    plot_data <- bind_rows(non_commercial_data, cml.all) 
+  }
 
-# Set type of catch as a factor to control order of bars in plot
-# and set which colors to use for each type
-plot_data <- plot_data %>%
-  mutate(type = factor(type, 
-  levels = c("Non-commercial - BFVR approach", "Commercial - CML unreported", 
-  "Commercial - CML reported")))
-colors <- c("Commercial - CML reported" = "#F09008FF", 
-            "Commercial - CML unreported" = "#7868C0FF", 
-            "Non-commercial - BFVR approach" = "#488820FF",
-            "2024 Assessment total catch" = "grey")
+  # Set type of catch as a factor to control order of bars in plot
+  # and set which colors to use for each type
+  plot_data <- plot_data %>%
+    mutate(type = factor(type, 
+    levels = c("Non-commercial - BFVR approach", "Commercial - CML unreported", 
+    "Commercial - CML reported")))
 
-# Get all unique years from the data to use as breaks
-all_years <- sort(unique(plot_data$year))
+  return(plot_data)
 
-plot_data$hover_text <- paste0("Year: ", plot_data$year, 
-                                "<br>Catch: ", format(round(plot_data$catch/1000, 1), big.mark=","), 
-                                "K")
+}) #end of total_catch_df
 
-tc.all$hover_text <- paste0("Year: ", tc.all$year, 
-                        "<br>Total catch: ", format(round(tc.all$catch/1000, 1), big.mark=","), 
-                        "K")
+# Create a total Deep7 plot
+output$combined_plot <- renderPlotly({
+  req(total_catch_df())
+  plot_data <- total_catch_df()
+  colors <- c("Commercial - CML reported" = "#F09008FF", 
+              "Commercial - CML unreported" = "#7868C0FF", 
+              "Non-commercial - BFVR approach" = "#488820FF",
+              "2024 Assessment total catch" = "grey")
 
-# Create interactive plot with plot_ly
-p <- plot_ly(plot_data, x = ~year, y = ~catch, color = ~type, 
-        type = "bar", 
-        colors = colors,
-        text = ~hover_text,
-        hoverinfo = "text") %>%     
-    add_trace(data = tc.all, x = ~year, y = ~catch, type = "scatter",
-        mode = "lines+markers",
-        line = list(color = "grey", width = 2),
-        marker = list(color = "grey", size = 3),
-        name = "Total catch used in the 2024 assessment", 
-        text = ~hover_text,
-        hoverinfo = "text"
-        ) %>%
-    layout(yaxis = list(title = "Catch (lbs)"), 
-          xaxis = list(
-            title = "Year",
-            tickmode = "array",
-            tickvals = all_years,
-            ticktext = all_years,
-            tickangle = 0,
-            dtick = 1
-          ), 
-          yaxis = list(
-          hoverformat = ".0f"
-          ),
-          legend = list(x = 1, y = 1,
-          xanchor = "right",
-          yanchor = "top"),
-          barmode = 'stack') %>%
-    # Add text annotations for the annual sum above each bar
-    add_annotations(
-      data = plot_data %>% group_by(year) %>% summarize(total = round(sum(catch), digits = -3)),
-      x = ~year,
-      y = ~total,
-      text = ~paste0(total/1000, "K"),
-      showarrow = FALSE,
-      yshift = 16,  # Adjust as needed to position text above bars
-      font = list(size = 14)
-    )
+  # Get all unique years from the data to use as breaks
+  all_years <- sort(unique(plot_data$year))
+
+  plot_data$hover_text <- paste0("Year: ", plot_data$year, 
+                                  "<br>Catch: ", format(round(plot_data$catch/1000, 1), big.mark=","), 
+                                  "K")
+
+  tc.all$hover_text <- paste0("Year: ", tc.all$year, 
+                          "<br>Total catch: ", format(round(tc.all$catch/1000, 1), big.mark=","), 
+                          "K")
+
+  # Create interactive plot with plot_ly
+  p <- plot_ly(plot_data, x = ~year, y = ~catch, color = ~type, 
+          type = "bar", 
+          colors = colors,
+          text = ~hover_text,
+          hoverinfo = "text") %>%     
+      add_trace(data = tc.all, x = ~year, y = ~catch, type = "scatter",
+          mode = "lines+markers",
+          line = list(color = "grey", width = 2),
+          marker = list(color = "grey", size = 3),
+          name = "Total catch used in the 2024 assessment", 
+          text = ~hover_text,
+          hoverinfo = "text"
+          ) %>%
+      layout(yaxis = list(title = "Catch (lbs)"), 
+            xaxis = list(
+              title = "Year",
+              tickmode = "array",
+              tickvals = all_years,
+              ticktext = all_years,
+              tickangle = 0,
+              dtick = 1
+            ), 
+            yaxis = list(
+            hoverformat = ".0f"
+            ),
+            legend = list(x = 1, y = 1,
+            xanchor = "right",
+            yanchor = "top"),
+            barmode = 'stack') %>%
+      # Add text annotations for the annual sum above each bar
+      add_annotations(
+        data = plot_data %>% group_by(year) %>% summarize(total = round(sum(catch), digits = -3)),
+        x = ~year,
+        y = ~total,
+        text = ~paste0(total/1000, "K"),
+        showarrow = FALSE,
+        yshift = 16,  # Adjust as needed to position text above bars
+        font = list(size = 14)
+      )
 
 }) # end of Deep 7 catch plot
+
+
+output$acl_table <- reactable::renderReactable({
+
+    req(total_catch_df())
+
+     # Create a helper function to format values differently based on row
+    formatCell <- function(value, row_index) {
+      if (row_index == 3) {
+        percent(value, accuracy = 0.1)
+      } else {
+        comma(value, accuracy = 1)
+      }
+    }
+    
+    recent_catch <- total_catch_df() %>% group_by(year) %>% filter(year >= 2018) %>% 
+    summarise(total_catch = sum(catch)) %>% ungroup() %>%
+    summarise(recent_catch = mean(total_catch)) %>% pull(recent_catch)
+
+    model_management_table <- total_catch_df() %>% group_by(year) %>% 
+      summarise(total_catch = sum(catch)) %>% 
+      summarise(mean_catch = mean(total_catch)/1000) %>%
+      mutate(biomass_2023 =( 0.022957 * mean_catch + 1.502262),
+              ACL = 2.26047 * mean_catch + 15.97866,
+              recent_catch = recent_catch/1000,
+              percent_acl = (recent_catch/ACL))
+    df <- data.frame(
+      "type" = c("ACL (total catch)", "Recent catch", "Recent catch relative to ACL"),
+      "Assessment_2024" = c(1105027, 395400, .36), # recent catch: TC %>% filter(Year < 2023 & Year >= 2018) %>% summarise(mean(d7))
+      "New_Scenario" = c(model_management_table$ACL*1000, 
+                  model_management_table$recent_catch*1000,
+                  model_management_table$percent_acl))
+    reactable(
+      df,
+      striped = TRUE,
+      highlight = TRUE,
+      bordered = TRUE,
+      defaultColDef = colDef(
+        align = "center",
+        headerStyle = list(fontWeight = "bold", background = "#f7f7f7")
+      ),
+      columns = list(
+        type = colDef(
+          name = "Measure",
+          align = "left",
+          minWidth = 200
+        ),
+        Assessment_2024 = colDef(
+          name = "Assessment 2024",
+          cell = function(value, index) {
+            if (index == 3) {
+              # Format as percentage for row 3
+              percent(value, accuracy = 0.1)
+            } else {
+              # Format with commas for rows 1 and 2
+              comma(value, accuracy = 1)
+            }
+          }
+        ),
+        New_Scenario = colDef(
+          name = "New Scenario",
+          cell = function(value, index) {
+            if (index == 3) {
+              # Format as percentage for row 3
+              percent(value, accuracy = 0.1)
+            } else {
+              # Format with commas for rows 1 and 2
+              comma(value, accuracy = 1)
+            }
+          }
+        )
+      ),
+      theme = reactableTheme(
+        borderColor = "#ddd",
+        headerStyle = list(
+          borderColor = "#555"
+        )
+      )
+    ) 
+  })
 
 } #end of server
 
