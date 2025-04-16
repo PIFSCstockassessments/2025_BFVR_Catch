@@ -123,29 +123,32 @@ ui <- page(
           
           actionButton("run_analysis", "Run Analysis", class = "btn-primary")
         ),
-    layout_columns(
-      card(
-          card_header("Deep7 Catch by Year"),
-          card_body(
-            plotlyOutput("combined_plot")
-          )
-      ),
-      layout_columns(
-        card(
-          card_header("ACL Table"),
-          card_body(
-            reactable::reactableOutput("acl_table")
-          )
-        )
-      )
-    ),
+        accordion(
+        
+        accordion_panel(
+          title = "Number of Non Commercial BF Fishers by County",
+          plotlyOutput("n_bf_fishers_plot")
+        ),
 
-    card(
-      card_header("Deep7 Catch by Species"),
-      card_body(
-        plotlyOutput("species_plot")
-      )
-    )
+        accordion_panel(
+          title = "Deep7 Catch by Year",
+          plotlyOutput("combined_plot")
+        ),
+        
+        accordion_panel(
+          title = "ACL Table",
+          reactable::reactableOutput("acl_table")
+        ),
+        
+        accordion_panel(
+          title = "Deep7 Catch by Species",
+          plotlyOutput("species_plot")
+        ),
+        
+        # Control initial state - can be "first" (default), "all", or "none"
+        open = "first"
+        )
+    
       )
     )
   )
