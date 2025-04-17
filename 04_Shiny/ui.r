@@ -117,8 +117,8 @@ ui <- page(
                     70 lbs per trip or 450 lbs per year would be classified as commercial and filtered out.",
                     placement = "right"
                     ),
-                    choices =  c("Low cut off (70 lb/trip and 450 lb/year)" = "low", 
-                    "High cut off (100 lb/trip and 500 lb/year)" = "high"), 
+                    choices =  c("Low cut off (70 lb/trip and/or 450 lb/year)" = "low", 
+                    "High cut off (100 lb/trip and/or 500 lb/year)" = "high"), 
                     selected = "low"),
           
           actionButton("run_analysis", "Run Analysis", class = "btn-primary")
