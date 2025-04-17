@@ -274,161 +274,88 @@ Final.all.sp <- reactive({
     )
   })
 
-# Plot Species-specific results
-output$species_plot <- renderPlotly({
+# create species-specific catch df for plots
+total_catch_sp <- reactive({
   req(Final.all.sp())
-
-options <- extras() # currently only extra is if you want to plot underreporting
+  options <- extras() # currently only extra is if you want to plot underreporting
+  
+  # First create data for Non-commercial - BFVR approach
+  non_commercial_data <- Final.all.sp() %>%
+    group_by(year, species) %>% 
+    summarise(catch = quantile(lbs_caught, .5)) %>% 
+    mutate(type = "Non-commercial - BFVR approach") %>%
+    filter(year < 2023)
     
-# First create data for Non-commercial - BFVR approach
-non_commercial_data <- Final.all.sp() %>%
-  group_by(year, species) %>% 
-  summarise(catch = quantile(lbs_caught, .5)) %>% 
-  mutate(type = "Non-commercial - BFVR approach") %>%
-  filter(year < 2023)
-  
-# Decide whether to include unreported CML based on proportion
-if (options$prop_unreported > 0) {
-  # Create data with both regular CML and unreported CML and NC
-  local_cml_all_sp <- cml.all.sp %>%
-    mutate(catch = (catch * options$prop_unreported),
-            type = "Commercial - CML unreported") %>% 
-    bind_rows(cml.all.sp)
-  
-  # Combine all data
-  plot_data <- bind_rows(non_commercial_data, local_cml_all_sp)
-} else {
-  # Only include the regular CML data (no unreported)
-  plot_data <- bind_rows(non_commercial_data, cml.all.sp)
-}
-# Set type of catch as a factor to control order of bars in plot
-# and set which colors to use for each type
-colors <- c("Commercial - CML reported" = "#F09008FF", 
-            "Commercial - CML unreported" = "#7868C0FF", 
-            "Non-commercial - BFVR approach" = "#488820FF",
-            "2024 Assessment total catch" = "grey")
-
-# Get all unique years from the data to use as breaks
-all_years <- sort(unique(plot_data$year))
-
-plot_data <- plot_data %>%
+  # Decide whether to include unreported CML based on proportion
+  if (options$prop_unreported > 0) {
+    # Create data with both regular CML and unreported CML and NC
+    local_cml_all_sp <- cml.all.sp %>%
+      mutate(catch = (catch * options$prop_unreported),
+              type = "Commercial - CML unreported") %>% 
+      bind_rows(cml.all.sp)
+    
+    # Combine all data
+    plot_data <- bind_rows(non_commercial_data, local_cml_all_sp)
+  } else {
+    # Only include the regular CML data (no unreported)
+    plot_data <- bind_rows(non_commercial_data, cml.all.sp)
+  }
+  plot_data <- plot_data %>%
   left_join(SP.id, by = c("species" = "sp_frs_id"), relationship = "many-to-many") %>% 
-  filter(species != "d7") %>%
   mutate(type = factor(type, levels = c("Non-commercial - BFVR approach", 
   "Commercial - CML unreported", "Commercial - CML reported"))) %>%
   distinct(year, species, type, .keep_all = TRUE) 
+})
 
-# Create a list to store individual plots
-plot_list <- list()
-  # Basic layout settings for all plots
-base_layout <- list(
-  xaxis = list(
-    tickmode = "array",
-    tickvals = all_years,
-    ticktext = all_years,
-    tickangle = -45,
-    dtick = 1
-  ),
-  hovermode = "closest",
-  legend = list(title = list(text = "Type")),
-  margin = list(t = 70)  # Increase top margin for title
-)
-common_name_vec <- unique(plot_data$common_name)
-# Create a plot for each facet value
-for (i in 1:length(common_name_vec)) { 
-  
-  current_sps <- common_name_vec[i]
-  # Filter data for this facet
-  facet_data <- plot_data %>% 
-    filter(common_name == current_sps)
-  tc.sp <- tc.all.sp %>% 
-  filter(common_name == current_sps)
+# Plot Species-specific results
+output$opaka_plot <- renderPlotly({
+  req(total_catch_sp())
+  opaka_catch <- total_catch_sp() %>% filter(species == "s19")
+  tc.opaka <- tc.all.sp %>% filter(species == "s19")
+  create_layered_catchplot(opaka_catch, tc.opaka, catch_colors)
+})
 
-  facet_data$hover_text <- paste0("Year: ", facet_data$year, 
-                                 "<br>Catch: ", format(round(facet_data$catch/1000, 1), big.mark=","), 
-                                 "K")
-  
-  tc.sp$hover_text <- paste0("Year: ", tc.sp$year, 
-                            "<br>Total catch: ", format(round(tc.sp$catch/1000, 1), big.mark=","), 
-                            "K")
-  
-  # Create individual plot
+output$onaga_plot <- renderPlotly({
+  req(total_catch_sp())
+  onaga_catch <- total_catch_sp() %>% filter(species == "s22")
+  tc.onaga <- tc.all.sp %>% filter(species == "s22")
+  create_layered_catchplot(onaga_catch, tc.onaga, catch_colors)
+})
 
-      p <- plot_ly(data = facet_data, x = ~year, y = ~round(catch, digits = 0), color = ~type, 
-                  type = "bar",
-                  colors = colors,
-                  showlegend = (i ==1),
-                  text = ~hover_text,
-                  hoverinfo = "text",
-                  textposition = "none") %>%
-            add_trace(data = tc.sp, x = ~year, y = ~catch, type = "scatter",
-                  mode = "lines+markers",
-                  line = list(color = "grey", width = 2),
-                  marker = list(color = "grey", size = 3),
-                  name = "Total catch used in the 2024 assessment", showlegend = (i ==1),
-                  text = ~hover_text, hoverinfo = "text",
-                  textposition = "none") %>%
-        layout(
-          annotations = list( 
-              list( 
-                x = 0.2,  
-                y = 1.0,  
-                text = current_sps,  
-                xref = "paper",  
-                yref = "paper",  
-                xanchor = "center",  
-                yanchor = "bottom",  
-                showarrow = FALSE 
-              )),
-        xaxis = base_layout$xaxis,
-        yaxis = list(
-        title = "Catch (lbs)",
-        autorange = TRUE,
-        hoverformat = ".0f"  
-        ),
-        hovermode = base_layout$hovermode,
-        margin = base_layout$margin,
-        barmode = 'stack'
-      )                 
-  
-  plot_list[[i]] <- p
-}
+output$ehu_plot <- renderPlotly({
+  req(total_catch_sp())
+  ehu_catch <- total_catch_sp() %>% filter(species == "s21")
+  tc.ehu <- tc.all.sp %>% filter(species == "s21")
+  create_layered_catchplot(ehu_catch, tc.ehu, catch_colors)
+})
 
-p.sp <- subplot(
-        plot_list, 
-        nrows = 3, 
-        shareY = FALSE,
-        titleX = FALSE,
-        margin = 0.07  # Increase margin for titles
-      ) %>%
-  layout(
-  annotations = list(
-            list(
-              text = "Catch (lbs)",
-              textangle = -90,
-              x = -.04,       # Position from left edge
-              y = 0.5,        # Middle of plot area 
-              xref = "paper",
-              yref = "paper",
-              showarrow = FALSE,
-              font = list(size = 14)
-            ),
-            list(
-              text = "Year",
-              x = .5,       # Position from left edge
-              y = 0,        # Middle of plot area 
-              xref = "paper",
-              yref = "paper",
-              showarrow = FALSE,
-              font = list(size = 14),
-              yshift = -40  
-          )),
-    showlegend = TRUE, 
-    legend = list(orientation = "h",
-    x = 0.5, y = -0.1, xanchor = "center"))
-  p.sp
+output$kale_plot <- renderPlotly({
+  req(total_catch_sp())
+  Kale_catch <- total_catch_sp() %>% filter(species == "s17")
+  tc.Kale <- tc.all.sp %>% filter(species == "s17")
+  create_layered_catchplot(Kale_catch, tc.Kale, catch_colors)
+})
 
-}) #end of species-specific plots
+output$gindai_plot <- renderPlotly({
+  req(total_catch_sp())
+  gindai_catch <- total_catch_sp() %>% filter(species == "s97")
+  tc.gindai <- tc.all.sp %>% filter(species == "s97")
+  create_layered_catchplot(gindai_catch, tc.gindai, catch_colors)
+})
+
+output$hapu_plot <- renderPlotly({
+  req(total_catch_sp())
+  hapu_catch <- total_catch_sp() %>% filter(species == "s15")
+  tc.hapu <- tc.all.sp %>% filter(species == "s15")
+  create_layered_catchplot(hapu_catch, tc.hapu, catch_colors)
+})
+
+output$lehi_plot <- renderPlotly({
+  req(total_catch_sp())
+  lehi_catch <- total_catch_sp() %>% filter(species == "s58")
+  tc.lehi <- tc.all.sp %>% filter(species == "s58")
+  create_layered_catchplot(lehi_catch, tc.lehi, catch_colors)
+})
 
 # Create the dataframe that will be shared for Deep7 plot and ACL table
 total_catch_df <- reactive({
@@ -473,11 +400,12 @@ total_catch_df <- reactive({
 output$combined_plot <- renderPlotly({
   req(total_catch_df())
   plot_data <- total_catch_df()
-  colors <- c("Commercial - CML reported" = "#F09008FF", 
-              "Commercial - CML unreported" = "#7868C0FF", 
-              "Non-commercial - BFVR approach" = "#488820FF",
-              "2024 Assessment total catch" = "grey")
-  create_layered_catchplot(plot_data, tc.all, colors)
+
+  p <- create_layered_catchplot(plot_data, tc.all, catch_colors)
+  p %>% layout(yaxis = list(tickmode = "linear",
+            tick0 = 0,
+            dtick = 50000,
+            tickformat =  ",~s"))
 
 }) # end of Deep 7 catch plot
 

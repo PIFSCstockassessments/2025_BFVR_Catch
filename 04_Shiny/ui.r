@@ -141,8 +141,42 @@ ui <- page(
         ),
         
         accordion_panel(
-          title = "Deep7 Catch by Species",
-          plotlyOutput("species_plot")
+          title = "Catch by Species",
+          tabsetPanel(
+            id = "species_plots",
+            tabPanel(
+              "Opakapaka",
+              plotlyOutput("opaka_plot")
+            ),
+          tabPanel(
+            "Onaga",
+            plotlyOutput("onaga_plot")
+          ),
+          tabPanel(
+            "Ehu",
+            plotlyOutput("ehu_plot")
+          ),
+          tabPanel(
+            "Kalekale",
+            plotlyOutput("kale_plot")
+          ),
+          tabPanel(
+            "Gindai",
+            plotlyOutput("gindai_plot")
+          ),
+          tabPanel(
+            "Lehi",
+            plotlyOutput("lehi_plot")
+          ),
+          tabPanel(
+            "Hapu'upu'u",
+            plotlyOutput("hapu_plot")
+          )
+            # panel for Onaga plot
+            # nav_panel("Onaga", plotlyOutput("onaga_plot"))
+          )
+          # title = "Deep7 Catch by Species",
+          # plotlyOutput("species_plot")
         ),
         
         # Control initial state - can be "first" (default), "all", or "none"

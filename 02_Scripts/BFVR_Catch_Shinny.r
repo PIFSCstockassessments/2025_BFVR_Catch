@@ -21,7 +21,7 @@ only_bf_registered  <- "Y"  # Only keep BF-registered fishers
 selected_quantile <- c("q90","q95","q99","max")[3]
 
 # What percentage of commercial catch is unreported
-percent_unreported <- 0
+percent_unreported <- 20
 
 # What filters to use "Deep7 only" or "All taxa".
 which_filter_taxa_level <- c("Deep7 only","All taxa")[2]
@@ -208,7 +208,7 @@ non_commercial_data <- Final.all.sp %>%
 if (percent_unreported > 0) {
   # Create data with both regular CML and unreported CML and NC
   local_cml_all_sp <- cml.all.sp %>%
-    mutate(catch = (catch * options$prop_unreported),
+    mutate(catch = (catch * percent_unreported/100),
             type = "Commercial - CML unreported") %>% 
     bind_rows(cml.all.sp)
   
@@ -264,7 +264,7 @@ non_commercial_data_all <- Final.all %>%
 if (percent_unreported > 0) {
   # Create data with both regular CML and unreported CML and NC
   local_cml_all <- cml.all %>%
-  mutate(catch = (catch * options$prop_unreported), 
+  mutate(catch = (catch * percent_unreported/100), 
   type = "Commercial - CML unreported") %>%
     bind_rows(cml.all)
   
@@ -290,7 +290,7 @@ ggplot(data = plot_data_all)+
   theme_minimal()+
   theme(axis.text.x=element_text(angle=45,hjust=1),
         strip.text = element_text(size = 14))+
-  labs(y="Year",x="Catch (lbs)")+
+  labs(x="Year",y="Catch (lbs)")+
   scale_fill_manual(values = colors) +
   scale_color_manual(values = colors)
 
@@ -312,3 +312,19 @@ model_management_table$percent_acl)) %>%
 column_to_rownames("type") %>%
 flextable() 
 
+
+ggplot() +
+  # Add the gray background bars for the totals
+  geom_col(aes(x = as.integer(year), y = catch), 
+           fill = "#D3D3D3", 
+           width = 0.8)+
+  # Add the colored bars for each segment
+  geom_col(data = plot_data_all, 
+           aes(x = as.integer(year), y = catch, fill = type),
+           position = position_dodge(width = 0.8), 
+           width = 0.5) +
+  theme_minimal()+
+  theme(axis.text.x=element_text(angle=45,hjust=1),
+        strip.text = element_text(size = 14))+
+  labs(x="Year",y="Catch (lbs)")+
+  scale_fill_manual(values = colors) 

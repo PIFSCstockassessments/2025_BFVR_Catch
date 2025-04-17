@@ -10,7 +10,13 @@ library(plotly)
 library(scales)
 library(reactable)
 
+#source plotting function
+source(file.path("layered_barplot.r"))
 
+catch_colors <- c("Commercial - CML reported" = "#F09008FF", 
+            "Commercial - CML unreported" = "#7868C0FF", 
+            "Non-commercial - BFVR approach" = "#488820FF",
+            "2024 Assessment total catch" = "grey")
 
 # Load trip-level limits outputted from 02_MRIP_Interview_Catch.qmd
 QT_trip <- fread(file.path("data", "mrip_quantiles.csv")) %>%
