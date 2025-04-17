@@ -57,10 +57,11 @@ create_layered_catchplot <- function(plot_data, assessment_catch, colors){
   
   plot <- plot %>%
           layout(yaxis = list(title = "Catch (lbs)",
-            tickmode = "linear",
-            tick0 = 0,
-            dtick = 50000,
-            tickformat =  ",~s", zeroline = FALSE),  
+            # tickmode = "linear",
+            # tick0 = 0,
+            # dtick = 50000,
+            # tickformat =  ",~s", 
+            zeroline = FALSE),  
             xaxis = list(
             title = "Year",
             tickmode = "array",
@@ -78,5 +79,8 @@ create_layered_catchplot <- function(plot_data, assessment_catch, colors){
 
 }
 
-#create_layered_catchplot(plot_data_all, tc.all, colors)
-
+# p <- create_layered_catchplot(plot_data_all, tc.all, colors)
+# p %>% layout(yaxis = list(tickmode = "linear",
+#             tick0 = 0,
+#             dtick = 50000,
+#             tickformat =  ",~s"))
