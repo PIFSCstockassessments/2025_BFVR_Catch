@@ -126,22 +126,22 @@ ui <- page(
         accordion(
         
         accordion_panel(
-          title = "Number of Non Commercial BF Fishers by County",
+          title = "How many active non-commercial Deep7 fishers are there?",
           plotlyOutput("n_bf_fishers_plot")
         ),
 
         accordion_panel(
-          title = "Deep7 Catch by Year",
+          title = "What is the Deep7 catch by year?",
           plotlyOutput("combined_plot")
         ),
         
         accordion_panel(
-          title = "ACL Table",
+          title = "What does the Annual Catch Limits (ACL) look like?",
           reactable::reactableOutput("acl_table")
         ),
         
         accordion_panel(
-          title = "Catch by Species",
+          title = "What are the catches by species?",
           tabsetPanel(
             id = "species_plots",
             tabPanel(
@@ -172,11 +172,7 @@ ui <- page(
             "Hapu'upu'u",
             plotlyOutput("hapu_plot")
           )
-            # panel for Onaga plot
-            # nav_panel("Onaga", plotlyOutput("onaga_plot"))
           )
-          # title = "Deep7 Catch by Species",
-          # plotlyOutput("species_plot")
         ),
         
         # Control initial state - can be "first" (default), "all", or "none"
