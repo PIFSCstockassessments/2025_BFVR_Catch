@@ -91,15 +91,15 @@ ui <- page(
           
           h4("How should we select non-commercial fisher proxies from the FRS?"),
           
-          radioButtons("only_bf_registered", 
-                     "Only include data from fishers on the BF registry?",
-                     choices = c("Yes" = "Y", "No" = "N"), 
-                     selected = "Y"),
+          # radioButtons("only_bf_registered", 
+          #            "Only include data from fishers on the BF registry?",
+          #            choices = c("Yes" = "Y", "No" = "N"), 
+          #            selected = "Y"),
           
-          radioButtons("which_filter_taxa_level",
-                      "Should we classify fishers based only on their total Deep7 catch or also their catch by species?",
-                      choices = c("Deep7 only", "All taxa"), 
-                      selected = "All taxa"),
+          # radioButtons("which_filter_taxa_level",
+          #             "Should we classify fishers based only on their total Deep7 catch or also their catch by species?",
+          #             choices = c("Deep7 only", "All taxa"), 
+          #             selected = "All taxa"),
 
           selectInput("which_filter_level",
                     label = tooltip("At what level should we filter the catch data?",
@@ -110,16 +110,16 @@ ui <- page(
                     choices = c("Trip", "Annual", "Both"),
                     selected = "Trip"),
           
-          selectInput("selected_quantile", 
-                    label = tooltip("What cut off should we use?", 
-                    "What cut off point should we use to select non-commercial fishers in the FRS.
-                    For example, 95% would mean that fishers reporting a trip with a catch higher than 95% of all
-                    non-commercial HMRFS interviews would be classified as commercial and filtered out.",
+          radioButtons("catch_cutoff", 
+                    label = tooltip("What cut off should we use for catch?", 
+                    "How much catch should we use as a cut off point to select non-commercial fishers in the FRS.
+                    For example, low cut off would mean that fishers reporting a trip with a catch higher than 
+                    70 lbs per trip or 450 lbs per year would be classified as commercial and filtered out.",
                     placement = "right"
                     ),
-                    choices =  c("90%" = "q90", "95%" = "q95", 
-                    "99%" = "q99", "Maximum" = "max"), 
-                    selected = "q99"),
+                    choices =  c("Low cut off (70 lb/trip and 450 lb/year)" = "low", 
+                    "High cut off (100 lb/trip and 500 lb/year)" = "high"), 
+                    selected = "low"),
           
           actionButton("run_analysis", "Run Analysis", class = "btn-primary")
         ),

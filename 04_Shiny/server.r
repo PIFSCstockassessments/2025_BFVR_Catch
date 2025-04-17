@@ -16,109 +16,17 @@ list(
 return(Sys.time())
 })
 
-# Function to load data and run analysis
-# In server
-data_prep <- eventReactive(sim_trigger(), {
-    
-    percent_inactive <- (input$percent_inactive/100)
-    only_bf_registered <- input$only_bf_registered 
-    selected_quantile <- input$selected_quantile
-    filter_level_id <- input$which_filter_level
-    filter_taxa_id <- input$which_filter_taxa_level
-    percent_unregistered <- (input$percent_unregistered/100)
-    
-    # Apply the correction related to the assumed # of BF registered fishers 
-    # catching at least one deep7 in any given year
-    # and the percentage of boats that are not registered in the BFVR
-    FC_sim <- FC %>% 
-        mutate(n_bf_fishers = n_bf_fishers - (n_bf_fishers * percent_inactive),
-        n_bf_fishers = n_bf_fishers + n_bf_fishers * (1 - percent_unregistered)) 
-
-    # Create a new column for future data manipulation
-    F2$trip_type <- 0
-
-    if(filter_level_id == "Trip" | filter_level_id == "Both"){
-      QT_trip <- QT_trip %>% 
-        filter(quantiles == selected_quantile) %>% 
-        as.data.table()
-
-      F2[d7 > QT_trip[sp_frs_id=="d7"]$value]$trip_type <- 1
-      
-      if(filter_taxa_id == "All taxa" ){
-  
-        F2[s17 > QT_trip[sp_frs_id=="s17"]$value| 
-            s19 > QT_trip[sp_frs_id=="s19"]$value| 
-            s21 > QT_trip[sp_frs_id=="s21"]$value|
-            s22 > QT_trip[sp_frs_id=="s22"]$value|
-            s97 > QT_trip[sp_frs_id=="s97"]$value| 
-            s20 > QT_trip[sp_frs_id=="s20"]$value 
-          ]$trip_type <- 1
-      }
-    }
-
-     # Sum catches to annual-level per fisher
-    F3 <- F2 %>% 
-      group_by(year, cml_no.fs, bf_registr, cml_registr, county) %>%
-      summarize_if(is.numeric, sum)
-    
-    # Re-classify "trip_type" into "fisher_type"
-    F3 <- F3 %>% 
-      mutate(fisher_type = if_else(trip_type > 0, "Comm", "NC")) %>%
-      select(-trip_type) %>% as.data.table()
-    # Apply the annual-level filters to classify fishers as comm. vs non-comm.
-    F3$annual_type <- "NC"
-
-    if(filter_level_id == "Annual" | filter_level_id == "Both"){
-      QT_annual <- QT_annual %>% 
-          filter(quantiles == selected_quantile) %>% as.data.table()
-
-      F3[d7 > QT_annual[sp_frs_id=="d7"]$value]$annual_type <- "Comm"
-        
-        if(filter_taxa_id == "All taxa" ){
-        
-          F3[s17 > QT_annual[sp_frs_id=="s17"]$value| 
-            s19 > QT_annual[sp_frs_id=="s19"]$value| 
-            s21 > QT_annual[sp_frs_id=="s21"]$value|
-            s22 > QT_annual[sp_frs_id=="s22"]$value|
-            s97 > QT_annual[sp_frs_id=="s97"]$value| 
-            s20 > QT_annual[sp_frs_id=="s20"]$value 
-            ]$annual_type <- "Comm"
-        }
-    }
-    F3 <- F3 %>% 
-    mutate(fisher_type=if_else(annual_type=="Comm","Comm",fisher_type))
-
-    # Apply filters on the fishers
-    if (input$only_bf_registered == "Y") { 
-      F3 <- F3 %>% filter(bf_registr == "Y") 
-    }
-    
-    F3 <- F3 %>% 
-      filter(fisher_type == "NC")
-    
-    # Add the # of NC vessels by year x County to the catch data
-    F3 <- F3 %>% 
-      left_join(FC_sim, by = join_by(year, county), relationship = "many-to-many") %>% 
-      relocate(n_bf_fishers, .after = county)
-
-    return(list(
-        QT_sim = QT_sim,
-        FC_sim = FC_sim, 
-        F3 = F3
-    ))
-
-})
-
-QT_sim <- reactive({
-  data_prep()$QT_sim
-})
-
 FC_sim <- reactive({
-  data_prep()$FC_sim
-})
 
-F3 <- reactive({
-  data_prep()$F3
+  percent_inactive <- (input$percent_inactive/100)
+  percent_unregistered <- (input$percent_unregistered/100)
+  # Apply the correction related to the assumed # of BF registered fishers 
+  # catching at least one deep7 in any given year
+  # and the percentage of boats that are not registered in the BFVR
+  FC_sim <- FC %>% 
+      mutate(n_bf_fishers = n_bf_fishers - (n_bf_fishers * percent_inactive),
+      n_bf_fishers = n_bf_fishers + n_bf_fishers * (1 - percent_unregistered)) 
+
 })
 
 output$n_bf_fishers_plot <- renderPlotly({
@@ -192,6 +100,105 @@ n_fishers_plot <- n_fishers_plot %>%
 
 n_fishers_plot
 
+})
+
+# Function to load data and run analysis
+# In server
+data_prep <- eventReactive(sim_trigger(), {
+    req(FC_sim())
+    FC_sim <- FC_sim()
+    #only_bf_registered <- input$only_bf_registered 
+    catch_cutoff <- input$catch_cutoff
+    filter_level_id <- input$which_filter_level
+    # filter_taxa_id <- input$which_filter_taxa_level
+        
+    # Create a new column for future data manipulation
+    F2$trip_type <- 0
+
+    if(filter_level_id == "Trip" | filter_level_id == "Both"){
+      # QT_trip <- QT_trip %>% 
+      #   filter(quantiles == catch_cutoff) %>% 
+      #   as.data.table()
+
+      if(catch_cutoff == "low"){
+        F2[d7 > 70]$trip_type <- 1
+      }else{
+        F2[d7 > 100]$trip_type <- 1
+      }
+      # if(filter_taxa_id == "All taxa" ){
+  
+        # F2[s17 > QT_trip[sp_frs_id=="s17"]$value| 
+        #     s19 > QT_trip[sp_frs_id=="s19"]$value| 
+        #     s21 > QT_trip[sp_frs_id=="s21"]$value|
+        #     s22 > QT_trip[sp_frs_id=="s22"]$value|
+        #     s97 > QT_trip[sp_frs_id=="s97"]$value| 
+        #     s20 > QT_trip[sp_frs_id=="s20"]$value 
+        #   ]$trip_type <- 1
+      # }
+    }
+
+     # Sum catches to annual-level per fisher
+    F3 <- F2 %>% 
+      group_by(year, cml_no.fs, bf_registr, cml_registr, county) %>%
+      summarize_if(is.numeric, sum)
+    
+    # Re-classify "trip_type" into "fisher_type"
+    F3 <- F3 %>% 
+      mutate(fisher_type = if_else(trip_type > 0, "Comm", "NC")) %>%
+      select(-trip_type) %>% as.data.table()
+    # Apply the annual-level filters to classify fishers as comm. vs non-comm.
+    F3$annual_type <- "NC"
+
+    if(filter_level_id == "Annual" | filter_level_id == "Both"){
+      # QT_annual <- QT_annual %>% 
+      #     filter(quantiles == catch_cutoff) %>% as.data.table()
+      if(catch_cutoff == "low"){
+        F3[d7 > 450]$annual_type <- "Comm"
+      }else{
+        F3[d7 > 500]$annual_type <- "Comm"
+      }
+
+        # if(filter_taxa_id == "All taxa" ){
+        
+        #   F3[s17 > QT_annual[sp_frs_id=="s17"]$value| 
+        #     s19 > QT_annual[sp_frs_id=="s19"]$value| 
+        #     s21 > QT_annual[sp_frs_id=="s21"]$value|
+        #     s22 > QT_annual[sp_frs_id=="s22"]$value|
+        #     s97 > QT_annual[sp_frs_id=="s97"]$value| 
+        #     s20 > QT_annual[sp_frs_id=="s20"]$value 
+        #     ]$annual_type <- "Comm"
+        # }
+    }
+    F3 <- F3 %>% 
+    mutate(fisher_type=if_else(annual_type=="Comm","Comm",fisher_type))
+
+    # Apply filters on the fishers
+    # if (input$only_bf_registered == "Y") { 
+    #   F3 <- F3 %>% filter(bf_registr == "Y") 
+    # }
+    
+    F3 <- F3 %>% 
+      filter(fisher_type == "NC")
+    
+    # Add the # of NC vessels by year x County to the catch data
+    F3 <- F3 %>% 
+      left_join(FC_sim, by = join_by(year, county), relationship = "many-to-many") %>% 
+      relocate(n_bf_fishers, .after = county)
+
+    return(list(
+        QT_sim = QT_sim,
+        F3 = F3
+    ))
+
+})
+
+QT_sim <- reactive({
+  data_prep()$QT_sim
+})
+
+
+F3 <- reactive({
+  data_prep()$F3
 })
 
 run_sim <- eventReactive(sim_trigger(), {
