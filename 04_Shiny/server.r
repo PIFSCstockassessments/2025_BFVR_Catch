@@ -122,16 +122,17 @@ F3 <- reactive({
 })
 
 output$n_bf_fishers_plot <- renderPlotly({
-  F3 <- F3()
+  req(FC_sim)
+  FC <- FC_sim()
 
-  total_fishers <- F3 %>% 
-    distinct(year, county, n_bf_fishers) %>%
+  total_fishers <- FC %>% 
+    #distinct(year, county, n_bf_fishers) %>%
     filter(year < 2023) %>%
     group_by(year) %>%
-    mutate(total_fishers = sum(n_bf_fishers)) %>%
-    distinct(year, total_fishers) 
-  county_fishers <- F3 %>% 
-    distinct(year, county, n_bf_fishers) %>% 
+    summarise(total_fishers = sum(n_bf_fishers))
+
+  county_fishers <- FC %>% 
+    # distinct(year, county, n_bf_fishers) %>% 
     filter(year < 2023)  
   
   n_fishers_plot <- plot_ly() %>%
@@ -166,15 +167,11 @@ output$n_bf_fishers_plot <- renderPlotly({
       type = "bar",
       x = segment_data$year,
       y = segment_data$n_bf_fishers,
-      name = segment_data$county,
-      marker = list(color = colors[segment_data$county],
+      name = segment,
+      marker = list(color = colors[segment],
                     line = list(color = "#D3D3D3", width = 1)),
       width = 0.2,
       offset =  segment_data$offset
-      # hoverinfo = "text",
-      # hovertext = paste0("Year: ", segment_data$year, 
-      #                   "<br>Catch: ", format(round(segment_data$catch/1000, 1), big.mark=","), 
-      #                   "K")
     )
   }
   # Configure layout
@@ -473,80 +470,7 @@ output$combined_plot <- renderPlotly({
               "Commercial - CML unreported" = "#7868C0FF", 
               "Non-commercial - BFVR approach" = "#488820FF",
               "2024 Assessment total catch" = "grey")
-
-  # Get all unique years from the data to use as breaks
-  all_years <- sort(unique(plot_data$year))
-  segments <- unique(plot_data$type) 
-
-
-  # Create interactive plot with plot_ly
-  plot <- plot_data %>% 
-  group_by(year) %>% 
-  summarise(annual_total = sum(catch)) %>%
-  plot_ly() %>%
-  # Add the gray background bars for totals
-  add_trace(
-    type = "bar",
-    x = ~year,
-    y = ~annual_total,
-    name = "Total Catch",
-    marker = list(color = "#D3D3D3"),
-    width = 0.8,
-    hoverinfo = "text",
-    hovertext = ~paste0("Year: ", year, 
-                        "<br>Catch: ", format(round(annual_total/1000, 1), big.mark=","), 
-                        "K")) %>% 
-  add_trace(data = tc.all, x = ~year, y = ~catch, type = "scatter",
-            mode = "lines+markers", 
-            line = list(color = "grey", width = 2),
-            marker = list(color = "grey", size = 3),
-            name = "Total catch used in the 2024 assessment",
-            hoverinfo = "text",
-            hovertext = ~paste0("Year: ", year, 
-                        "<br>Catch: ", format(round(catch/1000, 1), big.mark=","), 
-                        "K")) 
-for (segment in segments) {
-
-  segment_data <- filter(plot_data, type == segment)
-
-  plot <- plot %>%
-    add_trace(
-      type = "bar",
-      x = segment_data$year,
-      y = segment_data$catch,
-      name = segment,
-      marker = list(color = colors[segment],
-                    line = list(color = "D3D3D3", width = 1)),
-      width = 0.2,
-      offset =  ifelse(segment == "Commercial - CML reported", -0.3, 
-                     ifelse(segment == "Non-commercial - BFVR approach", 0.1, -0.1)),
-      hoverinfo = "text",
-      hovertext = paste0("Year: ", segment_data$year, 
-                        "<br>Catch: ", format(round(segment_data$catch/1000, 1), big.mark=","), 
-                        "K")
-    )
-}
-
-  # Configure layout
-  plot <- plot %>%
-          layout(yaxis = list(title = "Catch (lbs)",
-            tickmode = "linear",
-            tick0 = 0,
-            dtick = 50000,
-            tickformat =  ",~s", zeroline = FALSE),  
-            xaxis = list(
-              title = "Year",
-              tickmode = "array",
-              tickvals = all_years,
-              ticktext = all_years,
-              tickangle = 0,
-              dtick = 1,
-              showline = FALSE
-            ), 
-            legend = list(x = 1, y = 1,
-            xanchor = "right",
-            yanchor = "top"))
-  plot
+  create_layered_catchplot(plot_data, tc.all, colors)
 
 }) # end of Deep 7 catch plot
 
