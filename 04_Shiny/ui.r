@@ -54,34 +54,24 @@ ui <- page(
       page_sidebar(
         sidebar = sidebar(
           width = 400,
-          h4("CML catches"),
-          
-          sliderInput("prop_unreported", 
-                        label = tooltip("What percentage of the commercial catch is unreported?",
-                        "This is the catch caught by CML holders but not reported in the FRS.
-                        For example, catch that is sold via social media or unsold, where some 
-                        fishers may not feel the need to enter it in the FRS.",
-                        position = "right"), 
-                      min = 0, max = 100, value = 0, step = 10, post = "%"),
-          
-          # SEPARATOR
-          hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"), 
-
+                   
           h4("Number of active non-commercial fishers"),
 
-          sliderInput("percent_inactive",
+          sliderInput("percent_active",
             label = tooltip("What percentage of BF-registered 
-            boats are not actively trying to catch Deep7 in any given year?",
+            boats are fishing for Deep7?",
             "This is the percentage of boats that are registered in the BFVR
             but never go fishing for Deep7 or are simply not fishing.", 
             placement = "right"), 
-            min = 0, max = 100, value = 0, step = 10, post = "%"), 
+            min = 0, max = 100, value = 100, step = 10, post = "%"), 
           
           sliderInput("percent_unregistered", 
-                        label = tooltip("Of the boats actively fishing for Deep7, what percentage of 
-                        boats are registered in the BFVR?",
+                        label = tooltip("What percentage of 
+                        boats fishing for Deep7 are BF-registered?",
                         "Based on your experience, how often do you see or hear about vessels fishing for Deep7
-                        that are not registered in the BFVR?",
+                        that are not registered in the BFVR? If you select 100% that means every boat you see
+                        fishing for Deep7 is registered on the BFVR. If you select 50%, that means about half of 
+                        the boats you see fishing for Deep7 are not registered.",
                         placement = "right"
                         ),
                      min = 25, max = 100, value = 100, step = 25, post = "%"),
@@ -89,7 +79,7 @@ ui <- page(
           # SEPARATOR
           hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"),
           
-          h4("How should we select non-commercial fisher proxies from the FRS?"),
+          h4("How do we select non-commercial fishers in the FRS?"),
           
           # radioButtons("only_bf_registered", 
           #            "Only include data from fishers on the BF registry?",
@@ -100,26 +90,38 @@ ui <- page(
           #             "Should we classify fishers based only on their total Deep7 catch or also their catch by species?",
           #             choices = c("Deep7 only", "All taxa"), 
           #             selected = "All taxa"),
+          
+          radioButtons("catch_cutoff", 
+                    label = tooltip("What cut-off points should we use for catch?", 
+                    "How much catch should we use as a cut off point to select non-commercial fishers in the FRS.
+                    For example, low cut off would mean that fishers reporting a trip with a catch higher than 
+                    70 lbs per trip or 450 lbs per year would be classified as commercial and filtered out.",
+                    placement = "right"
+                    ),
+                    choices =  c("Low cut-off (70 lb/trip and/or 450 lb/year)" = "low", 
+                    "High cut-off (100 lb/trip and/or 500 lb/year)" = "high"), 
+                    selected = "low"),
 
           selectInput("which_filter_level",
-                    label = tooltip("At what level should we filter the catch data?",
+                    label = tooltip("At what level should we apply our cut-off points?",
                     "Should we use MRIP trip-level interviews and/or annual catch
                     estimates from the Lamson (2007) study.",
                     placement = "right"
                     ),
                     choices = c("Trip", "Annual", "Both"),
                     selected = "Trip"),
+           # SEPARATOR
+          hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"), 
+
+          h4("Unreported CML catches"),
           
-          radioButtons("catch_cutoff", 
-                    label = tooltip("What cut off should we use for catch?", 
-                    "How much catch should we use as a cut off point to select non-commercial fishers in the FRS.
-                    For example, low cut off would mean that fishers reporting a trip with a catch higher than 
-                    70 lbs per trip or 450 lbs per year would be classified as commercial and filtered out.",
-                    placement = "right"
-                    ),
-                    choices =  c("Low cut off (70 lb/trip and/or 450 lb/year)" = "low", 
-                    "High cut off (100 lb/trip and/or 500 lb/year)" = "high"), 
-                    selected = "low"),
+          sliderInput("prop_unreported", 
+                        label = tooltip("What percentage of the commercial catch is unreported?",
+                        "This is the catch caught by CML holders but not reported in the FRS.
+                        For example, catch that is sold via social media or unsold, where some 
+                        fishers may not feel the need to enter it in the FRS.",
+                        position = "right"), 
+                      min = 0, max = 100, value = 0, step = 10, post = "%"),
           
           actionButton("run_analysis", "Run Analysis", class = "btn-primary")
         ),

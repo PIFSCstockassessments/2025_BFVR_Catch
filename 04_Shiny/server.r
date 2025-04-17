@@ -18,13 +18,13 @@ return(Sys.time())
 
 FC_sim <- reactive({
 
-  percent_inactive <- (input$percent_inactive/100)
+  percent_active <- (input$percent_active/100)
   percent_unregistered <- (input$percent_unregistered/100)
   # Apply the correction related to the assumed # of BF registered fishers 
   # catching at least one deep7 in any given year
   # and the percentage of boats that are not registered in the BFVR
   FC_sim <- FC %>% 
-      mutate(n_bf_fishers = n_bf_fishers - (n_bf_fishers * percent_inactive),
+      mutate(n_bf_fishers = n_bf_fishers * percent_active,
       n_bf_fishers = n_bf_fishers + n_bf_fishers * (1 - percent_unregistered)) 
 
 })
@@ -84,7 +84,7 @@ output$n_bf_fishers_plot <- renderPlotly({
   }
   # Configure layout
 n_fishers_plot <- n_fishers_plot %>%
-  layout(yaxis = list(title = "Number of Fishers", zeroline = FALSE),  
+  layout(yaxis = list(title = "Number of active non-commercial Deep7 fishers", zeroline = FALSE),  
             xaxis = list(
               title = "Year",
               tickmode = "array",
