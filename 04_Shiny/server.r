@@ -84,7 +84,8 @@ output$n_bf_fishers_plot <- renderPlotly({
   }
   # Configure layout
 n_fishers_plot <- n_fishers_plot %>%
-  layout(yaxis = list(title = "Number of active non-commercial Deep7 fishers", zeroline = FALSE),  
+  layout(yaxis = list(title = "Number of active non-commercial Deep7 fishers", zeroline = FALSE,
+                      range  = list(0,800)),  
             xaxis = list(
               title = "Year",
               tickmode = "array",
