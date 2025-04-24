@@ -7,14 +7,14 @@ results <- reactiveVal(NULL)
 
 # Create a reactive trigger that changes whenever run 
 # analysis button is clicked
-sim_trigger <- reactive({
-# Dependencies: filtered data and simulation inputs
-list(
-    input$run_analysis      # Also allow manual triggering
-)
-# Return the current time as a convenient non-NULL value
-return(Sys.time())
-})
+# sim_trigger <- reactive({
+# # Dependencies: filtered data and simulation inputs
+# list(
+#     input$run_analysis      # Also allow manual triggering
+# )
+# # Return the current time as a convenient non-NULL value
+# return(Sys.time())
+# })
 
 FC_sim <- reactive({
 
@@ -101,7 +101,7 @@ output$total_fishers_plot <- renderPlotly({
 
 # Function to load data and run analysis
 # In server
-data_prep <- eventReactive(sim_trigger(), {
+data_prep <- reactive({
     req(FC_sim())
     FC_sim <- FC_sim()
     #only_bf_registered <- input$only_bf_registered 
@@ -202,7 +202,7 @@ F3 <- reactive({
   data_prep()$F3
 })
 
-run_sim <- eventReactive(sim_trigger(), {
+run_sim <- reactive({
   # Create empty results list to fill
   Results <- list() 
   # Get the actual data frame from the reactive function
@@ -213,9 +213,9 @@ run_sim <- eventReactive(sim_trigger(), {
     set.seed(1234)
     # Sample "n" times from the annual catch data set, where "n" is the number of
     # non-commercial BF fishers in a given Year x County.
-    for (i in 1:100) {
+    for (i in 1:50) {
       # Update progress bar
-      incProgress(1/100, detail = paste("Iteration", i, "of", 100))
+      incProgress(1/50, detail = paste("Iteration", i, "of", 50))
       
       aSample <- f3_data %>% # Use f3_data instead of F3
         group_by(year, county) %>% 

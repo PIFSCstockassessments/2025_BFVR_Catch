@@ -122,9 +122,9 @@ ui <- page(
                         For example, catch that is sold via social media or unsold, where some 
                         fishers may not feel the need to enter it in the FRS.",
                         position = "right"), 
-                      min = 0, max = 100, value = 0, step = 10, post = "%"),
+                      min = 0, max = 100, value = 0, step = 10, post = "%")
           
-          actionButton("run_analysis", "Run Analysis", class = "btn-primary")
+          # actionButton("run_analysis", "Run Analysis", class = "btn-primary")
         ),
         accordion(
         
