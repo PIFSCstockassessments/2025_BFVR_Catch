@@ -147,6 +147,10 @@ ui <- page(
           tabPanel(
             "Maui",
             plotlyOutput("maui_fishers_plot")
+          ),
+          tabPanel(
+            "All",
+            plotlyOutput("total_fishers_plot")
           )
           )
         ),

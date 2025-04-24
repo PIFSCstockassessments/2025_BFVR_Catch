@@ -91,38 +91,22 @@ create_layered_catchplot <- function(plot_data, assessment_catch, colors){
 #             tickformat =  ",~s"))
 
 
-create_layered_n_fishers_plot <- function(FC, county_filter, color){
-
-  total_fishers <- FC %>% 
-    #distinct(year, county, n_bf_fishers) %>%
-    filter(year < 2023) %>%
-    group_by(year) %>%
-    summarise(total_fishers = sum(n_bf_fishers))
+create_county_n_fishers_plot <- function(FC, county_filter, color){
 
   county_fishers <- FC %>% 
     filter(year < 2023 & county == county_filter)  
   
   all_years <- sort(unique(county_fishers$year))
 
-  n_fishers_plot <- plot_ly() %>%
+  n_fishers_plot <- plot_ly()%>%
     add_trace(
       type = "bar",
-      data = total_fishers, 
-      x = ~year, 
-      y = ~total_fishers,
-      name = "Total number of BF fishers", 
-      marker = list(color = "#D3D3D3"),
-      width = 0.8
-    ) %>%
-    add_trace(
-      type = "bar",
-      x = county_fishers$year,
-      y = county_fishers$n_bf_fishers,
+      data = county_fishers,
+      x = ~year,
+      y = ~n_bf_fishers,
       name = county_filter,
-      marker = list(color = color,
-                    line = list(color = "#D3D3D3", width = 1)),
-      width = 0.6, 
-      offset = -0.3
+      marker = list(color = color),
+      width = 0.8
     ) %>%
   layout(yaxis = list(title = "Number of active non-commercial Deep7 fishers", zeroline = FALSE,
                       range  = list(0,800)),  

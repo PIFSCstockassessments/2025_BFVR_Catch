@@ -33,7 +33,7 @@ output$honolulu_fishers_plot <- renderPlotly({
   req(FC_sim)
   FC <- FC_sim()
   
-  create_layered_n_fishers_plot(FC, "Honolulu County", "#B71300")
+  create_county_n_fishers_plot(FC, "Honolulu County", "#B71300")
 
 })
 
@@ -41,7 +41,7 @@ output$hawaii_fishers_plot <- renderPlotly({
   req(FC_sim)
   FC <- FC_sim()
   
-  create_layered_n_fishers_plot(FC, "Hawaii County", "#826087")
+  create_county_n_fishers_plot(FC, "Hawaii County", "#826087")
 
 })
 
@@ -49,7 +49,7 @@ output$kauai_fishers_plot <- renderPlotly({
   req(FC_sim)
   FC <- FC_sim()
   
-  create_layered_n_fishers_plot(FC, "Kauai County", "#002364")
+  create_county_n_fishers_plot(FC, "Kauai County", "#002364")
 
 })
 
@@ -57,7 +57,45 @@ output$maui_fishers_plot <- renderPlotly({
   req(FC_sim)
   FC <- FC_sim()
   
-  create_layered_n_fishers_plot(FC, "Maui County", "#317F3F")
+  create_county_n_fishers_plot(FC, "Maui County", "#317F3F")
+
+})
+
+output$total_fishers_plot <- renderPlotly({
+  req(FC_sim)
+  FC <- FC_sim()
+  
+  total_fishers <- FC %>% 
+    #distinct(year, county, n_bf_fishers) %>%
+    filter(year < 2023) %>%
+    group_by(year) %>%
+    summarise(total_fishers = sum(n_bf_fishers))
+  all_years <- sort(unique(total_fishers$year))
+  
+  plot_ly() %>%
+      add_trace(
+        type = "bar",
+        data = total_fishers, 
+        x = ~year, 
+        y = ~total_fishers,
+        name = "Total number of BF fishers", 
+        marker = list(color = "#696969"),
+        width = 0.8
+      ) %>%
+  layout(yaxis = list(title = "Number of active non-commercial Deep7 fishers", zeroline = FALSE,
+                      range  = list(0,800)),  
+            xaxis = list(
+              title = "Year",
+              tickmode = "array",
+              tickvals = all_years,
+              ticktext = all_years,
+              tickangle = 0,
+              dtick = 1,
+              showline = FALSE
+            ), 
+            legend = list(x = 1, y = 1,
+            xanchor = "right",
+            yanchor = "top"))
 
 })
 
@@ -376,15 +414,6 @@ output$combined_plot <- renderPlotly({
 output$acl_table <- reactable::renderReactable({
 
     req(total_catch_df())
-
-     # Create a helper function to format values differently based on row
-    formatCell <- function(value, row_index) {
-      if (row_index == 3) {
-        percent(value, accuracy = 0.1)
-      } else {
-        comma(value, accuracy = 1)
-      }
-    }
     
     recent_catch <- total_catch_df() %>% 
       filter(year >= 2018 & type == "Commercial - CML reported") %>% 
@@ -394,23 +423,27 @@ output$acl_table <- reactable::renderReactable({
     pivot_wider(names_from = "type", values_from = "catch") %>%
     mutate(total_catch = rowSums(across(2:last_col())),
        cml_prop = `Commercial - CML reported`/total_catch) %>% 
-    filter(year >= 2018) %>%
+    #filter(year >= 2018) %>%
     summarise(mean_cml_prop = mean(cml_prop)) %>% pull(mean_cml_prop)
 
     model_management_table <- total_catch_df() %>% group_by(year) %>% 
-      filter(year >= 2018 & year < 2023) %>%
+      #filter(year >= 2018 & year < 2023) %>%
       summarise(total_catch = sum(catch)) %>% 
       summarise(mean_catch = mean(total_catch)/1000) %>%
-      mutate(biomass_2023 =( 0.022957 * mean_catch + 1.502262),
-              ACL_total = 2.26047 * mean_catch + 15.97866,
+      mutate(biomass_2023 =( 0.022997 * mean_catch + 1.502262),
+              ACL_total = (0.002265 * mean_catch + 0.01598)*1000,
               ACL = ACL_total * recent_cml_prop,
               recent_catch = recent_catch/1000,
-              percent_acl = (recent_catch/ACL))
+              percent_acl = (recent_catch/ACL),
+              percent_recent = recent_catch/mean_catch)
     df <- data.frame(
-      "type" = c("ACL (reported commercial catch)", "Recent reported commercial catch", "Recent reported commercial catch (2018-2022) relative to ACL"),
-      "Assessment_2024" = c(493000, 186360, .38), # recent catch: cml %>% filter(year < 2023 & year >= 2018) %>% summarise(mean(d7))
+      "type" = c("ACL (reported commercial catch)", "Recent reported commercial catch (2018-2022)",
+      "Recent reported commercial catch (2018-2022) relative to total catch", 
+      "Recent reported commercial catch (2018-2022) relative to ACL"),
+      "Assessment_2024" = c(493000, 186360, .47, .38), # recent catch: cml %>% filter(year < 2023 & year >= 2018) %>% summarise(mean(d7)), rep comm catch to total catch: cml %>% filter(year < 2023 & year >= 2018) %>% summarise(mean(d7))/TC %>% filter(Year < 2023 & Year >= 2018) %>% summarise(mean(d7))
       "New_Scenario" = c(model_management_table$ACL*1000, 
                   model_management_table$recent_catch*1000,
+                  model_management_table$percent_recent,
                   model_management_table$percent_acl))
     reactable(
       df,
@@ -430,7 +463,7 @@ output$acl_table <- reactable::renderReactable({
         Assessment_2024 = colDef(
           name = "Assessment 2024",
           cell = function(value, index) {
-            if (index == 3) {
+            if (index == 3 | index == 4) {
               # Format as percentage for row 3
               percent(value, accuracy = 0.1)
             } else {
@@ -442,7 +475,7 @@ output$acl_table <- reactable::renderReactable({
         New_Scenario = colDef(
           name = "New Scenario",
           cell = function(value, index) {
-            if (index == 3) {
+            if (index == 3| index == 4) {
               # Format as percentage for row 3
               percent(value, accuracy = 0.1)
             } else {
