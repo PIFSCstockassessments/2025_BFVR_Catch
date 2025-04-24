@@ -59,19 +59,19 @@ ui <- page(
 
           sliderInput("percent_active",
             label = tooltip("What percentage of BF-registered 
-            boats are fishing for Deep7?",
-            "This is the percentage of boats that are registered in the BFVR
+            fishers are fishing for Deep7?",
+            "This is the percentage of fishers that are registered in the BFVR
             but never go fishing for Deep7 or are simply not fishing.", 
             placement = "right"), 
             min = 0, max = 100, value = 100, step = 10, post = "%"), 
           
           sliderInput("percent_unregistered", 
                         label = tooltip("What percentage of 
-                        boats fishing for Deep7 are BF-registered?",
-                        "Based on your experience, how often do you see or hear about vessels fishing for Deep7
-                        that are not registered in the BFVR? If you select 100% that means every boat you see
+                        fishers fishing for Deep7 are BF-registered?",
+                        "Based on your experience, how often do you see or hear about people fishing for Deep7
+                        that are not registered in the BFVR? If you select 100% that means everyone you see
                         fishing for Deep7 is registered on the BFVR. If you select 50%, that means about half of 
-                        the boats you see fishing for Deep7 are not registered.",
+                        the people you see fishing for Deep7 are not registered.",
                         placement = "right"
                         ),
                      min = 25, max = 100, value = 100, step = 25, post = "%"),
@@ -95,21 +95,22 @@ ui <- page(
                     label = tooltip("What cut-off points should we use for catch?", 
                     "How much catch should we use as a cut off point to select non-commercial fishers in the FRS.
                     For example, low cut off would mean that fishers reporting a trip with a catch higher than 
-                    70 lbs per trip or 450 lbs per year would be classified as commercial and filtered out.",
+                    50 lbs per trip would be classified as commercial and filtered out.",
                     placement = "right"
                     ),
-                    choices =  c("Low cut-off (70 lb/trip and/or 450 lb/year)" = "low", 
-                    "High cut-off (100 lb/trip and/or 500 lb/year)" = "high"), 
+                    choices =  c("Low cut-off (50 lb/trip)" = "low", 
+                    "Intermediate cut-off (70 lb/trip)" = "med",
+                    "High cut-off (100 lb/trip)" = "high"), 
                     selected = "low"),
 
-          selectInput("which_filter_level",
-                    label = tooltip("At what level should we apply our cut-off points?",
-                    "Should we use MRIP trip-level interviews and/or annual catch
-                    estimates from the Lamson (2007) study.",
-                    placement = "right"
-                    ),
-                    choices = c("Trip", "Annual", "Both"),
-                    selected = "Trip"),
+          # selectInput("which_filter_level",
+          #           label = tooltip("At what level should we apply our cut-off points?",
+          #           "Should we use MRIP trip-level interviews and/or annual catch
+          #           estimates from the Lamson (2007) study.",
+          #           placement = "right"
+          #           ),
+          #           choices = c("Trip", "Annual", "Both"),
+          #           selected = "Trip"),
            # SEPARATOR
           hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"), 
 
@@ -129,7 +130,25 @@ ui <- page(
         
         accordion_panel(
           title = "How many active non-commercial Deep7 fishers are there?",
-          plotlyOutput("n_bf_fishers_plot")
+          tabsetPanel(
+            id = "active_fishers_plot",
+            tabPanel(
+              "Honolulu",
+              plotlyOutput("honolulu_fishers_plot")
+            ),
+          tabPanel(
+            "Hawaii",
+            plotlyOutput("hawaii_fishers_plot")
+          ),
+          tabPanel(
+            "Kauai",
+            plotlyOutput("kauai_fishers_plot")
+          ),
+          tabPanel(
+            "Maui",
+            plotlyOutput("maui_fishers_plot")
+          )
+          )
         ),
 
         accordion_panel(

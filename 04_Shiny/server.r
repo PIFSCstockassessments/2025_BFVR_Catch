@@ -29,77 +29,35 @@ FC_sim <- reactive({
 
 })
 
-output$n_bf_fishers_plot <- renderPlotly({
+output$honolulu_fishers_plot <- renderPlotly({
   req(FC_sim)
   FC <- FC_sim()
-
-  total_fishers <- FC %>% 
-    #distinct(year, county, n_bf_fishers) %>%
-    filter(year < 2023) %>%
-    group_by(year) %>%
-    summarise(total_fishers = sum(n_bf_fishers))
-
-  county_fishers <- FC %>% 
-    # distinct(year, county, n_bf_fishers) %>% 
-    filter(year < 2023)  
   
-  n_fishers_plot <- plot_ly() %>%
-  add_trace(
-    type = "bar",
-    data = total_fishers, 
-    x = ~year, 
-    y = ~total_fishers,
-    name = "Total number of BF fishers", 
-    marker = list(color = "#D3D3D3"),
-    width = 0.8
-  )
+  create_layered_n_fishers_plot(FC, "Honolulu County", "#B71300")
 
-  segments <- unique(county_fishers$county) 
-  all_years <- sort(unique(county_fishers$year))
-  colors <- c("Kauai County" = "#002364",
-  "Maui County" = "#317F3F", "Hawaii County" = "#826087",
-  "Honolulu County" = "#B71300")
- 
-  for (segment in segments) {
+})
 
-  segment_data <- filter(county_fishers, county == segment) %>%
-                  mutate(offset = case_when(
-                    county == "Honolulu County" ~ -.4, 
-                    county == "Hawaii County" ~ -.2,
-                    county == "Maui County" ~ 0,
-                    county == "Kauai County" ~ .2,
-                    ))
+output$hawaii_fishers_plot <- renderPlotly({
+  req(FC_sim)
+  FC <- FC_sim()
+  
+  create_layered_n_fishers_plot(FC, "Hawaii County", "#826087")
 
-  n_fishers_plot <- n_fishers_plot %>%
-    add_trace(
-      type = "bar",
-      x = segment_data$year,
-      y = segment_data$n_bf_fishers,
-      name = segment,
-      marker = list(color = colors[segment],
-                    line = list(color = "#D3D3D3", width = 1)),
-      width = 0.2,
-      offset =  segment_data$offset
-    )
-  }
-  # Configure layout
-n_fishers_plot <- n_fishers_plot %>%
-  layout(yaxis = list(title = "Number of active non-commercial Deep7 fishers", zeroline = FALSE,
-                      range  = list(0,800)),  
-            xaxis = list(
-              title = "Year",
-              tickmode = "array",
-              tickvals = all_years,
-              ticktext = all_years,
-              tickangle = 0,
-              dtick = 1,
-              showline = FALSE
-            ), 
-            legend = list(x = 1, y = 1,
-            xanchor = "right",
-            yanchor = "top"))
+})
 
-n_fishers_plot
+output$kauai_fishers_plot <- renderPlotly({
+  req(FC_sim)
+  FC <- FC_sim()
+  
+  create_layered_n_fishers_plot(FC, "Kauai County", "#002364")
+
+})
+
+output$maui_fishers_plot <- renderPlotly({
+  req(FC_sim)
+  FC <- FC_sim()
+  
+  create_layered_n_fishers_plot(FC, "Maui County", "#317F3F")
 
 })
 
@@ -110,7 +68,7 @@ data_prep <- eventReactive(sim_trigger(), {
     FC_sim <- FC_sim()
     #only_bf_registered <- input$only_bf_registered 
     catch_cutoff <- input$catch_cutoff
-    filter_level_id <- input$which_filter_level
+    filter_level_id <- "Trip" #input$which_filter_level
     # filter_taxa_id <- input$which_filter_taxa_level
         
     # Create a new column for future data manipulation
@@ -122,8 +80,12 @@ data_prep <- eventReactive(sim_trigger(), {
       #   as.data.table()
 
       if(catch_cutoff == "low"){
+        F2[d7 > 50]$trip_type <- 1
+      }
+      if(catch_cutoff == "med"){
         F2[d7 > 70]$trip_type <- 1
-      }else{
+      }
+      if(catch_cutoff == "high"){
         F2[d7 > 100]$trip_type <- 1
       }
       # if(filter_taxa_id == "All taxa" ){
@@ -150,14 +112,14 @@ data_prep <- eventReactive(sim_trigger(), {
     # Apply the annual-level filters to classify fishers as comm. vs non-comm.
     F3$annual_type <- "NC"
 
-    if(filter_level_id == "Annual" | filter_level_id == "Both"){
-      # QT_annual <- QT_annual %>% 
-      #     filter(quantiles == catch_cutoff) %>% as.data.table()
-      if(catch_cutoff == "low"){
-        F3[d7 > 450]$annual_type <- "Comm"
-      }else{
-        F3[d7 > 500]$annual_type <- "Comm"
-      }
+    # if(filter_level_id == "Annual" | filter_level_id == "Both"){
+    #   # QT_annual <- QT_annual %>% 
+    #   #     filter(quantiles == catch_cutoff) %>% as.data.table()
+    #   if(catch_cutoff == "low"){
+    #     F3[d7 > 450]$annual_type <- "Comm"
+    #   }else{
+    #     F3[d7 > 500]$annual_type <- "Comm"
+    #   }
 
         # if(filter_taxa_id == "All taxa" ){
         
@@ -169,7 +131,7 @@ data_prep <- eventReactive(sim_trigger(), {
         #     s20 > QT_annual[sp_frs_id=="s20"]$value 
         #     ]$annual_type <- "Comm"
         # }
-    }
+    #}
     F3 <- F3 %>% 
     mutate(fisher_type=if_else(annual_type=="Comm","Comm",fisher_type))
 
@@ -403,10 +365,10 @@ output$combined_plot <- renderPlotly({
   plot_data <- total_catch_df()
 
   p <- create_layered_catchplot(plot_data, tc.all, catch_colors)
-  p %>% layout(yaxis = list(tickmode = "linear",
-            tick0 = 0,
-            dtick = 50000,
-            tickformat =  ",~s"))
+  # p %>% layout(yaxis = list(tickmode = "linear",
+  #           tick0 = 0,
+  #           dtick = 50000,
+  #           tickformat =  ",~s"))
 
 }) # end of Deep 7 catch plot
 
@@ -424,20 +386,29 @@ output$acl_table <- reactable::renderReactable({
       }
     }
     
-    recent_catch <- total_catch_df() %>% group_by(year) %>% filter(year >= 2018) %>% 
-    summarise(total_catch = sum(catch)) %>% ungroup() %>%
-    summarise(recent_catch = mean(total_catch)) %>% pull(recent_catch)
+    recent_catch <- total_catch_df() %>% 
+      filter(year >= 2018 & type == "Commercial - CML reported") %>% 
+      summarise(recent_catch = mean(catch)) %>% pull(recent_catch)
+
+    recent_cml_prop <- total_catch_df() %>% 
+    pivot_wider(names_from = "type", values_from = "catch") %>%
+    mutate(total_catch = rowSums(across(2:last_col())),
+       cml_prop = `Commercial - CML reported`/total_catch) %>% 
+    filter(year >= 2018) %>%
+    summarise(mean_cml_prop = mean(cml_prop)) %>% pull(mean_cml_prop)
 
     model_management_table <- total_catch_df() %>% group_by(year) %>% 
+      filter(year >= 2018 & year < 2023) %>%
       summarise(total_catch = sum(catch)) %>% 
       summarise(mean_catch = mean(total_catch)/1000) %>%
       mutate(biomass_2023 =( 0.022957 * mean_catch + 1.502262),
-              ACL = 2.26047 * mean_catch + 15.97866,
+              ACL_total = 2.26047 * mean_catch + 15.97866,
+              ACL = ACL_total * recent_cml_prop,
               recent_catch = recent_catch/1000,
               percent_acl = (recent_catch/ACL))
     df <- data.frame(
-      "type" = c("ACL (total catch)", "Recent catch", "Recent catch relative to ACL"),
-      "Assessment_2024" = c(1105027, 395400, .36), # recent catch: TC %>% filter(Year < 2023 & Year >= 2018) %>% summarise(mean(d7))
+      "type" = c("ACL (reported commercial catch)", "Recent reported commercial catch", "Recent reported commercial catch (2018-2022) relative to ACL"),
+      "Assessment_2024" = c(493000, 186360, .38), # recent catch: cml %>% filter(year < 2023 & year >= 2018) %>% summarise(mean(d7))
       "New_Scenario" = c(model_management_table$ACL*1000, 
                   model_management_table$recent_catch*1000,
                   model_management_table$percent_acl))

@@ -15,6 +15,7 @@ create_layered_catchplot <- function(plot_data, assessment_catch, colors){
             name = "Total Catch",
             marker = list(color = "#D3D3D3"),
             width = 0.8,
+            visible = 'legendonly',
             hoverinfo = "text",
             hovertext = ~paste0("Year: ", year, 
                                 "<br>Catch: ", format(round(annual_total/1000, 1), big.mark=","), 
@@ -29,7 +30,8 @@ create_layered_catchplot <- function(plot_data, assessment_catch, colors){
           hoverinfo = "text",
           hovertext = ~paste0("Year: ", year, 
                       "<br>Catch: ", format(round(catch/1000, 1), big.mark=","), 
-                      "K"))
+                      "K"),
+          visible = 'legendonly')
   segments <- unique(plot_data$type) 
   all_years <- sort(unique(plot_data$year))
   # add layers for different catch segments
@@ -48,15 +50,18 @@ create_layered_catchplot <- function(plot_data, assessment_catch, colors){
         width = 0.2,
         offset =  ifelse(segment == "Commercial - CML reported", -0.3, 
                       ifelse(segment == "Non-commercial - BFVR approach", 0.1, -0.1)),
+        visible = ifelse(segment == "Commercial - CML reported", 'legendonly', TRUE),
         hoverinfo = "text",
         hovertext = paste0("Year: ", segment_data$year, 
                           "<br>Catch: ", format(round(segment_data$catch/1000, 1), big.mark=","), 
-                          "K")
+                          "K") 
       )
   }
   
   plot <- plot %>%
           layout(yaxis = list(title = "Catch (lbs)",
+            fixedrange = FALSE, # Prevents axis from disappearing
+            rangemode = "tozero",
             # tickmode = "linear",
             # tick0 = 0,
             # dtick = 50000,
@@ -84,3 +89,59 @@ create_layered_catchplot <- function(plot_data, assessment_catch, colors){
 #             tick0 = 0,
 #             dtick = 50000,
 #             tickformat =  ",~s"))
+
+
+create_layered_n_fishers_plot <- function(FC, county_filter, color){
+
+  total_fishers <- FC %>% 
+    #distinct(year, county, n_bf_fishers) %>%
+    filter(year < 2023) %>%
+    group_by(year) %>%
+    summarise(total_fishers = sum(n_bf_fishers))
+
+  county_fishers <- FC %>% 
+    filter(year < 2023 & county == county_filter)  
+  
+  all_years <- sort(unique(county_fishers$year))
+
+  n_fishers_plot <- plot_ly() %>%
+    add_trace(
+      type = "bar",
+      data = total_fishers, 
+      x = ~year, 
+      y = ~total_fishers,
+      name = "Total number of BF fishers", 
+      marker = list(color = "#D3D3D3"),
+      width = 0.8
+    ) %>%
+    add_trace(
+      type = "bar",
+      x = county_fishers$year,
+      y = county_fishers$n_bf_fishers,
+      name = county_filter,
+      marker = list(color = color,
+                    line = list(color = "#D3D3D3", width = 1)),
+      width = 0.6, 
+      offset = -0.3
+    ) %>%
+  layout(yaxis = list(title = "Number of active non-commercial Deep7 fishers", zeroline = FALSE,
+                      range  = list(0,800)),  
+            xaxis = list(
+              title = "Year",
+              tickmode = "array",
+              tickvals = all_years,
+              ticktext = all_years,
+              tickangle = 0,
+              dtick = 1,
+              showline = FALSE
+            ), 
+            legend = list(x = 1, y = 1,
+            xanchor = "right",
+            yanchor = "top"))
+
+  n_fishers_plot
+
+
+}
+
+#create_layered_n_fishers_plot(FC, "Honolulu County", "#B71300")
