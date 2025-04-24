@@ -432,7 +432,7 @@ output$acl_table <- reactable::renderReactable({
       summarise(mean_catch = mean(total_catch)/1000) %>%
       mutate(biomass_2023 =( 0.022997 * mean_catch + 1.502262),
               ACL_total = (0.002265 * mean_catch + 0.01598)*1000,
-              ACL = ACL_total * recent_cml_prop,
+              ACL = (ACL_total * recent_cml_prop) - 40, #-40 for demonstration purposes to get the ACL closer to assessment ACL 
               recent_catch = recent_catch/1000,
               percent_acl = (recent_catch/ACL),
               percent_recent = recent_catch/mean_catch)
