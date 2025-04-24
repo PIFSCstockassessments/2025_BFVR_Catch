@@ -28,7 +28,7 @@ which_filter_taxa_level <- c("Deep7 only","All taxa")[2]
 
 # At which level should catch data be filtered, trip (MRIP), annual (Lamson),
 # or both?
-which_filter_level <- c("Trip","Annual","Both")[2]
+which_filter_level <- c("Trip","Annual","Both")[1]
 #=======================================================
 
 #================Load data==============================
@@ -296,17 +296,27 @@ ggplot(data = plot_data_all)+
 
 
 plot_data_all %>% filter(type=="Non-commercial - BFVR approach") %>% group_by() %>% summarize(lbs=mean(catch))
-      
+
+recent_catch <- plot_data_all %>% filter(year >= 2018 & type == "Commercial - CML reported") %>% 
+  summarise(recent_catch = mean(catch)) %>% pull(recent_catch)
+
+recent_cml_prop <- plot_data_all %>% pivot_wider(names_from = "type", values_from = "catch") %>%
+  mutate(total_catch = rowSums(across(2:last_col())),
+        cml_prop = `Commercial - CML reported`/total_catch) %>% filter(year >= 2018) %>%
+  summarise(mean_cml_prop = mean(cml_prop)) %>% pull(mean_cml_prop)
+
 model_management_table <- plot_data_all %>% group_by(year) %>% 
+  filter(year >= 2018 & year < 2023) %>% 
   summarise(total_catch = sum(catch)) %>% 
   summarise(mean_catch = mean(total_catch)/1000) %>%
   mutate(biomass_2023 =( 0.022957 * mean_catch + 1.502262),
-          ACL = 2.26047 * mean_catch + 15.97866,
+          ACL_total = 2.26047 * mean_catch + 15.97866,
+          ACL = ACL_total * recent_cml_prop,
           recent_catch = recent_catch/1000,
           percent_acl = (recent_catch/ACL)) 
 
 data.frame("type" = c("ACL (total catch)", "Recent catch", "Recent catch relative to ACL"),
-"Assessment_2024" = c(1105027, 395400, .36), 
+"Assessment_2024" = c(493000, 186360, .38), # recent catch: cml %>% filter(year < 2023 & year >= 2018) %>% summarise(mean(d7)) 
 "New_Scenario" = c(model_management_table$ACL*1000, model_management_table$recent_catch*1000,
 model_management_table$percent_acl)) %>% 
 column_to_rownames("type") %>%
