@@ -397,12 +397,17 @@ total_catch_df <- reactive({
 
 }) #end of total_catch_df
 
+legendState <- reactiveVal(NULL)
+
 # Create a total Deep7 plot
 output$combined_plot <- renderPlotly({
   req(total_catch_df())
   plot_data <- total_catch_df()
+  
 
-  p <- create_layered_catchplot(plot_data, tc.all, catch_colors)
+  p <- create_layered_catchplot(plot_data, tc.all, catch_colors, legendState(), source_id = "combined_plot") 
+  p <- event_register(p, "plotly_legendclick")
+  return(p)
   # p %>% layout(yaxis = list(tickmode = "linear",
   #           tick0 = 0,
   #           dtick = 50000,
@@ -410,6 +415,35 @@ output$combined_plot <- renderPlotly({
 
 }) # end of Deep 7 catch plot
 
+ # Observer for legend clicks
+  observeEvent(event_data("plotly_legendclick", source = "combined_plot"), {
+    click_data <- event_data("plotly_legendclick", source = "combined_plot")
+    req(total_catch_df())
+    plot_data <- total_catch_df()
+    # Get the name of the clicked trace
+    clicked_name <- click_data$name
+    
+    # Update the legend state
+    current_state <- legendState()
+    if(is.null(current_state)) {
+      # Initialize if null
+      segments <- unique(plot_data$type)
+      current_state <- list(
+        "Total catch used in the 2024 assessment" = 'legendonly',
+        'Total Catch' = 'legendonly',
+        "Commercial - CML unreported" = 'legendonly'
+      )
+      for(segment in segments) {
+        current_state[[segment]] <- ifelse(segment == "Non-commercial - BFVR approach", TRUE, 'legendonly')
+      }
+    }
+    
+    # Toggle visibility
+    current_state[[clicked_name]] <- if(current_state[[clicked_name]] == TRUE) 'legendonly' else TRUE
+    
+    # Update the reactive value
+    legendState(current_state)
+  })
 
 output$acl_table <- reactable::renderReactable({
 

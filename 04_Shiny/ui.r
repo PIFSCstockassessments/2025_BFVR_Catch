@@ -1,5 +1,6 @@
 # Define UI
 ui <- page(
+  useShinyjs(),
   title = "Deep7 Commercial and Non-Commercial Catch Analysis",
   
   # Create a tabbed interface
