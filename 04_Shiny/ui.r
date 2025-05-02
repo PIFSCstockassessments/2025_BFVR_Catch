@@ -1,6 +1,12 @@
 # Define UI
 ui <- page(
   useShinyjs(),
+  tags$script(HTML("
+    Shiny.addCustomMessageHandler('catchPlot_update_legendState', function(legendState) {
+      Shiny.setInputValue('catchPlot_legendState', legendState);
+    });
+  ")),
+  
   title = "Deep7 Commercial and Non-Commercial Catch Analysis",
   
   # Create a tabbed interface

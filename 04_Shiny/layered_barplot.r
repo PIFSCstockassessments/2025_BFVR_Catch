@@ -1,54 +1,63 @@
 # Function to create a layered barplot for annual catch estimates. 
 # Plot function used in the BFVR Shiny app
 
-create_layered_catchplot <- function(plot_data, assessment_catch, colors, legendState = NULL, source_id = "barPlot"){
+create_layered_catchplot <- function(plot_data, assessment_catch, colors, visibility_states = NULL, source_id = "barPlot"){
   
   segments <- unique(plot_data$type) 
   all_years <- sort(unique(plot_data$year))
-  # Default visibility settings if legendState is not provided
-  if(is.null(legendState)) {
-    # Initialize default visibility (only "Non-commercial - BFVR approach" visible by default)
-    legendState <- c(
-      "Total catch used in the 2024 assessment" = 'legendonly',
-      'Total Catch' = 'legendonly',
-      "Commercial - CML unreported" = 'legendonly'
+
+  # Default visibility states if none provided
+  if(is.null(visibility_states)) {
+    visibility_states <- list(
+      "Total Catch" = "legendonly",
+      "Total catch used in the 2024 assessment" = "legendonly"
     )
-    # Add visibility for each segment
     for(segment in segments) {
-      legendState[segment] <- ifelse(segment == "Non-commercial - BFVR approach", TRUE, 'legendonly')
+      visibility_states[[segment]] <- ifelse(segment == "Non-commercial - BFVR approach", TRUE, "legendonly")
     }
   }
   
+  # Helper function to safely get visibility state with fallback
+  get_visibility <- function(name, default = "legendonly") {
+    if(!is.null(visibility_states[[name]])) {
+      return(visibility_states[[name]])
+    }
+    return(default)
+  }
+
   # create the first layer of total catch bars
-  plot <- plot_data %>% 
-          group_by(year) %>% 
-          summarise(annual_total = sum(catch)) %>%
-          plot_ly(source = source_id) %>% 
-          # Add the gray background bars for totals
-          add_trace(
-            type = "bar",
-            x = ~year,
-            y = ~annual_total,
-            name = "Total Catch",
-            marker = list(color = "#D3D3D3"),
-            width = 0.8,
-            visible = legendState[2],
-            hoverinfo = "text",
-            hovertext = ~paste0("Year: ", year, 
-                                "<br>Catch: ", format(round(annual_total/1000, 1), big.mark=","), 
-                                "K")
-          ) %>% 
-          # add line for total catch used in 2024 assessment
-          add_trace(data = assessment_catch, x = ~year, y = ~catch, type = "scatter",
-          mode = "lines+markers", 
-          line = list(color = "grey", width = 2),
-          marker = list(color = "grey", size = 3),
-          name = "Total catch used in the 2024 assessment",
-          hoverinfo = "text",
-          hovertext = ~paste0("Year: ", year, 
-                      "<br>Catch: ", format(round(catch/1000, 1), big.mark=","), 
-                      "K"),
-          visible = 'legendonly')
+  # Start with an empty plot with the correct source ID
+  plot <- plot_ly(source = source_id)
+  # Add total catch bars
+  total_data <- plot_data %>% 
+    group_by(year) %>% 
+    summarise(annual_total = sum(catch))
+  
+  plot <- plot %>% add_trace(
+    data = total_data,
+    type = "bar",
+    x = ~year,
+    y = ~annual_total,
+    name = "Total Catch",
+    marker = list(color = "#D3D3D3"),
+    width = 0.8,
+    visible = get_visibility("Total Catch"),
+    hoverinfo = "text",
+    hovertext = ~paste0("Year: ", year, 
+                        "<br>Catch: ", format(round(annual_total/1000, 1), big.mark=","), 
+                        "K")
+  ) %>%
+  # add line for total catch used in 2024 assessment
+  add_trace(data = assessment_catch, x = ~year, y = ~catch, type = "scatter",
+  mode = "lines+markers", 
+  line = list(color = "grey", width = 2),
+  marker = list(color = "grey", size = 3),
+  name = "Total catch used in the 2024 assessment",
+  hoverinfo = "text",
+  hovertext = ~paste0("Year: ", year, 
+              "<br>Catch: ", format(round(catch/1000, 1), big.mark=","), 
+              "K"),
+  visible = get_visibility("Total catch used in the 2024 assessment"))
 
   # add layers for different catch segments
   for (segment in segments) {
@@ -66,7 +75,9 @@ create_layered_catchplot <- function(plot_data, assessment_catch, colors, legend
         width = 0.2,
         offset =  ifelse(segment == "Commercial - CML reported", -0.3, 
                       ifelse(segment == "Non-commercial - BFVR approach", 0.1, -0.1)),
-        visible = legendState[segment],
+        visible = get_visibility(segment, 
+                             default = ifelse(segment == "Non-commercial - BFVR approach", 
+                                            TRUE, "legendonly")),
         hoverinfo = "text",
         hovertext = paste0("Year: ", segment_data$year, 
                           "<br>Catch: ", format(round(segment_data$catch/1000, 1), big.mark=","), 
@@ -97,6 +108,7 @@ create_layered_catchplot <- function(plot_data, assessment_catch, colors, legend
             yanchor = "top"))
   
   plot <- event_register(plot, "plotly_legendclick")
+   cat("Registered plotly_legendclick event for source:", source_id, "\n")
   return(plot)
 
 }
