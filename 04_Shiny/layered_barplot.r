@@ -93,7 +93,8 @@ create_layered_catchplot <- function(plot_data, assessment_catch, colors, visibi
             # tick0 = 0,
             # dtick = 50000,
             # tickformat =  ",~s", 
-            zeroline = FALSE),  
+            zeroline = FALSE,
+            tickfont = list(size = 14)),  
             xaxis = list(
             title = "Year",
             tickmode = "array",
@@ -101,11 +102,13 @@ create_layered_catchplot <- function(plot_data, assessment_catch, colors, visibi
             ticktext = all_years,
             tickangle = 0,
             dtick = 1,
-            showline = FALSE
+            showline = FALSE,
+            tickfont = list(size = 14)
             ), 
             legend = list(x = 1, y = 1,
             xanchor = "right",
-            yanchor = "top"))
+            yanchor = "top",
+            font = list(size = 16)))
   
   plot <- event_register(plot, "plotly_legendclick")
    cat("Registered plotly_legendclick event for source:", source_id, "\n")
@@ -137,8 +140,10 @@ create_county_n_fishers_plot <- function(FC, county_filter, color){
       marker = list(color = color),
       width = 0.8
     ) %>%
-  layout(yaxis = list(title = "Number of active non-commercial Deep7 fishers", zeroline = FALSE,
-                      range  = list(0,800)),  
+  layout(yaxis = list(title = "Number of active non-commercial Deep7 fishers", 
+              zeroline = FALSE,
+              range  = list(0,800), 
+              tickfont = list(size = 14)),  
             xaxis = list(
               title = "Year",
               tickmode = "array",
@@ -146,11 +151,13 @@ create_county_n_fishers_plot <- function(FC, county_filter, color){
               ticktext = all_years,
               tickangle = 0,
               dtick = 1,
-              showline = FALSE
+              showline = FALSE, 
+              tickfont = list(size = 14)
             ), 
             legend = list(x = 1, y = 1,
             xanchor = "right",
-            yanchor = "top"))
+            yanchor = "top",
+            font = list(size = 16)))
 
   n_fishers_plot
 

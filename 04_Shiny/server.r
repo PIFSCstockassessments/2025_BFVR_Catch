@@ -299,7 +299,7 @@ total_catch_sp <- reactive({
   if (options$prop_unreported > 0) {
     # Create data with both regular CML and unreported CML and NC
     local_cml_all_sp <- cml.all.sp %>%
-      mutate(catch = (catch * options$prop_unreported),
+      mutate(catch = (catch / (1-options$prop_unreported)) * options$prop_unreporte,
               type = "Commercial - CML unreported") %>% 
       bind_rows(cml.all.sp)
     
@@ -316,54 +316,94 @@ total_catch_sp <- reactive({
   distinct(year, species, type, .keep_all = TRUE) 
 })
 
+# Track click events using the trace name directly
+# Make sure the source matches exactly with what's in the plot creation function
+observeEvent(event_data("plotly_legendclick", source = "barPlot"), {
+  clicked <- event_data("plotly_legendclick", source = "barPlot")
+  if(!is.null(clicked) && !is.null(clicked$name)) {
+    # Get the name of the clicked trace
+    trace_name <- clicked$name
+    
+    # Get current visibility states
+    current_states <- visibilityState()
+    
+    # Toggle the visibility for this trace
+    if(!is.null(current_states[[trace_name]])) {
+      current_states[[trace_name]] <- if(current_states[[trace_name]] == TRUE) "legendonly" else TRUE
+      visibilityState(current_states)
+    }
+  }
+})
+
 # Plot Species-specific results
 output$opaka_plot <- renderPlotly({
   req(total_catch_sp())
+  current_states <- visibilityState()
   opaka_catch <- total_catch_sp() %>% filter(species == "s19")
   tc.opaka <- tc.all.sp %>% filter(species == "s19")
-  create_layered_catchplot(opaka_catch, tc.opaka, catch_colors)
+  create_layered_catchplot(opaka_catch, tc.opaka, 
+    catch_colors, visibility_states = current_states, 
+    source_id = "barPlot")
 })
 
 output$onaga_plot <- renderPlotly({
   req(total_catch_sp())
+  current_states <- visibilityState()
   onaga_catch <- total_catch_sp() %>% filter(species == "s22")
   tc.onaga <- tc.all.sp %>% filter(species == "s22")
-  create_layered_catchplot(onaga_catch, tc.onaga, catch_colors)
+  create_layered_catchplot(onaga_catch, tc.onaga, 
+    catch_colors, visibility_states = current_states, 
+    source_id = "barPlot")
 })
 
 output$ehu_plot <- renderPlotly({
   req(total_catch_sp())
+  current_states <- visibilityState()
   ehu_catch <- total_catch_sp() %>% filter(species == "s21")
   tc.ehu <- tc.all.sp %>% filter(species == "s21")
-  create_layered_catchplot(ehu_catch, tc.ehu, catch_colors)
+  create_layered_catchplot(ehu_catch, tc.ehu, 
+    catch_colors, visibility_states = current_states, 
+    source_id = "barPlot")
 })
 
 output$kale_plot <- renderPlotly({
   req(total_catch_sp())
+  current_states <- visibilityState()
   Kale_catch <- total_catch_sp() %>% filter(species == "s17")
   tc.Kale <- tc.all.sp %>% filter(species == "s17")
-  create_layered_catchplot(Kale_catch, tc.Kale, catch_colors)
+  create_layered_catchplot(Kale_catch, tc.Kale, 
+    catch_colors, visibility_states = current_states, 
+    source_id = "barPlot")
 })
 
 output$gindai_plot <- renderPlotly({
   req(total_catch_sp())
+  current_states <- visibilityState()
   gindai_catch <- total_catch_sp() %>% filter(species == "s97")
   tc.gindai <- tc.all.sp %>% filter(species == "s97")
-  create_layered_catchplot(gindai_catch, tc.gindai, catch_colors)
+  create_layered_catchplot(gindai_catch, tc.gindai, 
+    catch_colors, visibility_states = current_states, 
+    source_id = "barPlot")
 })
 
 output$hapu_plot <- renderPlotly({
   req(total_catch_sp())
+  current_states <- visibilityState()
   hapu_catch <- total_catch_sp() %>% filter(species == "s15")
   tc.hapu <- tc.all.sp %>% filter(species == "s15")
-  create_layered_catchplot(hapu_catch, tc.hapu, catch_colors)
+  create_layered_catchplot(hapu_catch, tc.hapu, 
+    catch_colors, visibility_states = current_states, 
+    source_id = "barPlot")
 })
 
 output$lehi_plot <- renderPlotly({
   req(total_catch_sp())
+  current_states <- visibilityState()
   lehi_catch <- total_catch_sp() %>% filter(species == "s58")
   tc.lehi <- tc.all.sp %>% filter(species == "s58")
-  create_layered_catchplot(lehi_catch, tc.lehi, catch_colors)
+  create_layered_catchplot(lehi_catch, tc.lehi, 
+    catch_colors, visibility_states = current_states, 
+    source_id = "barPlot")
 })
 
 # Create the dataframe that will be shared for Deep7 plot and ACL table
@@ -383,7 +423,7 @@ total_catch_df <- reactive({
   if (options$prop_unreported > 0) {
     # Create data with both regular CML and unreported CML and NC
     local_cml_all <- cml.all %>%
-    mutate(catch = (catch * options$prop_unreported), 
+    mutate(catch = (catch / (1-options$prop_unreported)) * options$prop_unreported, 
     type = "Commercial - CML unreported") %>%
       bind_rows(cml.all)
     
@@ -404,25 +444,6 @@ total_catch_df <- reactive({
   return(plot_data)
 
 }) #end of total_catch_df
-
-# Track click events using the trace name directly
-# Make sure the source matches exactly with what's in the plot creation function
-observeEvent(event_data("plotly_legendclick", source = "barPlot"), {
-  clicked <- event_data("plotly_legendclick", source = "barPlot")
-  if(!is.null(clicked) && !is.null(clicked$name)) {
-    # Get the name of the clicked trace
-    trace_name <- clicked$name
-    
-    # Get current visibility states
-    current_states <- visibilityState()
-    
-    # Toggle the visibility for this trace
-    if(!is.null(current_states[[trace_name]])) {
-      current_states[[trace_name]] <- if(current_states[[trace_name]] == TRUE) "legendonly" else TRUE
-      visibilityState(current_states)
-    }
-  }
-})
 
 
 # Create a total Deep7 plot
@@ -466,8 +487,8 @@ output$acl_table <- reactable::renderReactable({
               percent_recent = recent_catch/mean_catch)
     df <- data.frame(
       "type" = c("ACL (reported commercial catch)", "Recent reported commercial catch (2018-2022)",
-      "Recent reported commercial catch (2018-2022) relative to total catch", 
-      "Recent reported commercial catch (2018-2022) relative to ACL"),
+      "Recent reported commercial catch relative to total catch", 
+      "Recent reported commercial catch relative to ACL"),
       "Assessment_2024" = c(493000, 186360, .47, .38), # recent catch: cml %>% filter(year < 2023 & year >= 2018) %>% summarise(mean(d7)), rep comm catch to total catch: cml %>% filter(year < 2023 & year >= 2018) %>% summarise(mean(d7))/TC %>% filter(Year < 2023 & Year >= 2018) %>% summarise(mean(d7))
       "New_Scenario" = c(model_management_table$ACL*1000, 
                   model_management_table$recent_catch*1000,

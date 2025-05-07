@@ -9,6 +9,8 @@ library(ggthemes)
 library(plotly)
 library(scales)
 library(reactable)
+library(shinyjs)
+
 
 #source plotting function
 source(file.path("layered_barplot.r"))

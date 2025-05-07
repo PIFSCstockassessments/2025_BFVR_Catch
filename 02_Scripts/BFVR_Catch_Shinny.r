@@ -21,7 +21,7 @@ only_bf_registered  <- "Y"  # Only keep BF-registered fishers
 selected_quantile <- c("q90","q95","q99","max")[3]
 
 # What percentage of commercial catch is unreported
-percent_unreported <- 20
+percent_unreported <- 50
 
 # What filters to use "Deep7 only" or "All taxa".
 which_filter_taxa_level <- c("Deep7 only","All taxa")[2]
@@ -302,26 +302,26 @@ recent_catch <- plot_data_all %>% filter(year >= 2018 & type == "Commercial - CM
 
 recent_cml_prop <- plot_data_all %>% pivot_wider(names_from = "type", values_from = "catch") %>%
   mutate(total_catch = rowSums(across(2:last_col())),
-        cml_prop = `Commercial - CML reported`/total_catch) %>% filter(year >= 2018) %>%
+        cml_prop = `Commercial - CML reported`/total_catch) %>% #filter(year >= 2018) %>%
   summarise(mean_cml_prop = mean(cml_prop)) %>% pull(mean_cml_prop)
 
 model_management_table <- plot_data_all %>% group_by(year) %>% 
-  filter(year >= 2018 & year < 2023) %>% 
+  #filter(year >= 2018 & year < 2023) %>% 
   summarise(total_catch = sum(catch)) %>% 
   summarise(mean_catch = mean(total_catch)/1000) %>%
-  mutate(biomass_2023 =( 0.022957 * mean_catch + 1.502262),
-          ACL_total = 2.26047 * mean_catch + 15.97866,
+  mutate(biomass_2023 =( 0.022997 * mean_catch + 1.502262),
+          ACL_total = (2.265e-03 * mean_catch + 1.598e-02)*1000,
           ACL = ACL_total * recent_cml_prop,
           recent_catch = recent_catch/1000,
-          percent_acl = (recent_catch/ACL)) 
+          percent_acl = (recent_catch/ACL),
+          percent_recent = recent_catch/mean_catch) 
 
 data.frame("type" = c("ACL (total catch)", "Recent catch", "Recent catch relative to ACL"),
 "Assessment_2024" = c(493000, 186360, .38), # recent catch: cml %>% filter(year < 2023 & year >= 2018) %>% summarise(mean(d7)) 
 "New_Scenario" = c(model_management_table$ACL*1000, model_management_table$recent_catch*1000,
 model_management_table$percent_acl)) %>% 
 column_to_rownames("type") %>%
-flextable() 
-
+flextable()
 
 ggplot() +
   # Add the gray background bars for the totals

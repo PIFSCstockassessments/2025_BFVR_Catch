@@ -6,6 +6,34 @@ ui <- page(
       Shiny.setInputValue('catchPlot_legendState', legendState);
     });
   ")),
+  tags$head(
+    tags$style(HTML("
+      /* Increase font size for slider values */
+      .irs-grid-text, .irs-min, .irs-max, .irs-single, .irs-from, .irs-to {
+        font-size: 14px !important; /* Adjust size as needed */
+      }
+      
+      /* Make the active/selected value even larger if desired */
+      .irs-single, .irs-from, .irs-to {
+        font-size: 16px !important; /* Adjust size as needed */
+      }
+    "))
+  ),
+  tags$head(
+    tags$style(HTML("
+      .compact-input {
+        margin-bottom: -10px;
+        margin-top: -10px;
+      }
+      .compact-input .irs {
+        margin-top: 0;
+        margin-bottom: 0;
+      }
+      .compact-input .control-label {
+        margin-bottom: 0;
+      }
+    "))
+  ),
   
   title = "Deep7 Commercial and Non-Commercial Catch Analysis",
   
@@ -70,7 +98,8 @@ ui <- page(
             "This is the percentage of fishers that are registered in the BFVR
             but never go fishing for Deep7 or are simply not fishing.", 
             placement = "right"), 
-            min = 0, max = 100, value = 100, step = 10, post = "%"), 
+            min = 0, max = 100, value = 100, step = 10, post = "%")|> 
+          tagAppendAttributes(class = "compact-input"), 
           
           sliderInput("percent_unregistered", 
                         label = tooltip("What percentage of 
@@ -81,10 +110,11 @@ ui <- page(
                         the people you see fishing for Deep7 are not registered.",
                         placement = "right"
                         ),
-                     min = 25, max = 100, value = 100, step = 25, post = "%"),
+                     min = 25, max = 100, value = 100, step = 25, post = "%")|> 
+          tagAppendAttributes(class = "compact-input"),
    
           # SEPARATOR
-          hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"),
+          #hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"),
           
           h4("How do we select non-commercial fishers in the FRS?"),
           
@@ -97,7 +127,7 @@ ui <- page(
           #             "Should we classify fishers based only on their total Deep7 catch or also their catch by species?",
           #             choices = c("Deep7 only", "All taxa"), 
           #             selected = "All taxa"),
-          
+
           radioButtons("catch_cutoff", 
                     label = tooltip("What cut-off points should we use for catch?", 
                     "How much catch should we use as a cut off point to select non-commercial fishers in the FRS.
@@ -108,8 +138,8 @@ ui <- page(
                     choices =  c("Low cut-off (50 lb/trip)" = "low", 
                     "Intermediate cut-off (70 lb/trip)" = "med",
                     "High cut-off (100 lb/trip)" = "high"), 
-                    selected = "low"),
-
+                    selected = "low") |> 
+          tagAppendAttributes(class = "compact-input"),
           # selectInput("which_filter_level",
           #           label = tooltip("At what level should we apply our cut-off points?",
           #           "Should we use MRIP trip-level interviews and/or annual catch
@@ -119,18 +149,18 @@ ui <- page(
           #           choices = c("Trip", "Annual", "Both"),
           #           selected = "Trip"),
            # SEPARATOR
-          hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"), 
+          #hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"), 
 
           h4("Unreported CML catches"),
-          
+
           sliderInput("prop_unreported", 
                         label = tooltip("What percentage of the commercial catch is unreported?",
                         "This is the catch caught by CML holders but not reported in the FRS.
                         For example, catch that is sold via social media or unsold, where some 
                         fishers may not feel the need to enter it in the FRS.",
                         position = "right"), 
-                      min = 0, max = 100, value = 0, step = 10, post = "%")
-          
+                      min = 0, max = 100, value = 0, step = 10, post = "%")|> 
+          tagAppendAttributes(class = "compact-input")
           # actionButton("run_analysis", "Run Analysis", class = "btn-primary")
         ),
         accordion(
