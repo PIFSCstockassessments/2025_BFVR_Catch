@@ -299,7 +299,7 @@ total_catch_sp <- reactive({
   if (options$prop_unreported > 0) {
     # Create data with both regular CML and unreported CML and NC
     local_cml_all_sp <- cml.all.sp %>%
-      mutate(catch = (catch / (1-options$prop_unreported)) * options$prop_unreporte,
+      mutate(catch = (catch / (1-options$prop_unreported)) * options$prop_unreported,
               type = "Commercial - CML unreported") %>% 
       bind_rows(cml.all.sp)
     
