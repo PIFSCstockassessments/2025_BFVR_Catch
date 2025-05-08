@@ -54,21 +54,20 @@ ui <- page(
             commercial and non-commercial catch of Deep7 bottomfish species in Hawaii."),
             p("The tool uses vessel counts from the Bottomfish Vessel Registry (BFVR) and catch reports
             from the Fisher Reporting System (FRS). It allows users to adjust various key decision points 
-              on how to process these data sources and to see how that affects the final catch estimates. It
+              on how to process these data sources and to see how that affects the final non-commercial catch estimates. It
               then compares these estimates to the total catch used in the 2024 assessment."),
             
             h4("Key Decision Points"),
             tags$ul(
-              tags$li(strong("Commercial Catch Adjustment:"), " Account for unreported commercial catches"),
-              tags$li(strong("Non-commercial Fisher Count Estimation:"), " Adjust for unregistered vessels and inactive vessels"),
-              tags$li(strong("FRS Data Filtering:"), " Select appropriate catch cutoff points to identify non-commercial proxy fishers")
+              tags$li(strong("Non-commercial fisher count:"), " Adjust for unregistered vessels and inactive vessels"),
+              tags$li(strong("FRS data filtering:"), " Select appropriate catch cutoff points to identify non-commercial proxy fishers"),
+              tags$li(strong("Commercial catch adjustment:"), " Account for unreported commercial catches")
             ),
             
             h4("How to Use"),
             p("1. Navigate to the 'Analysis' tab"),
             p("2. Adjust the parameters in the sidebar to reflect your assumptions"),
-            p("3. Click the 'Run Analysis' button to generate results"),
-            p("4. Review the analysis results in the main panel"),
+            p("3. Review the analysis results in the main panel"),
             
             h4("Background"),
             p("The Deep7 bottomfish species are economically and culturally important to Hawaii. 
