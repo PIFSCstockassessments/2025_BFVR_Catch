@@ -94,8 +94,8 @@ ui <- page(
           sliderInput("percent_active",
             label = tooltip("What percentage of BF-registered 
             fishers are fishing for Deep7?",
-            "This is the percentage of fishers that are registered in the BFVR
-            but never go fishing for Deep7 or are simply not fishing.", 
+            "This is the percentage of fishers registered in the BFVR
+            that actually go fishing for Deep7.", 
             placement = "right"), 
             min = 0, max = 100, value = 100, step = 10, post = "%")|> 
           tagAppendAttributes(class = "compact-input"), 
@@ -103,10 +103,10 @@ ui <- page(
           sliderInput("percent_unregistered", 
                         label = tooltip("What percentage of 
                         fishers fishing for Deep7 are BF-registered?",
-                        "Based on your experience, how often do you see or hear about people fishing for Deep7
-                        that are not registered in the BFVR? If you select 100% that means everyone you see
+                        "How often do you see or hear about people fishing for Deep7
+                        that are not registered in the BFVR? If you select 100% that means everyone you see/hear about
                         fishing for Deep7 is registered on the BFVR. If you select 50%, that means about half of 
-                        the people you see fishing for Deep7 are not registered.",
+                        the people you see/hear about fishing for Deep7 are not registered.",
                         placement = "right"
                         ),
                      min = 25, max = 100, value = 100, step = 25, post = "%")|> 
@@ -115,7 +115,7 @@ ui <- page(
           # SEPARATOR
           #hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"),
           
-          h4("How do we select non-commercial fishers in the FRS?"),
+          h4("Selecting \"non-commercial fishers\" from the FRS"),
           
           # radioButtons("only_bf_registered", 
           #            "Only include data from fishers on the BF registry?",
@@ -128,9 +128,9 @@ ui <- page(
           #             selected = "All taxa"),
 
           radioButtons("catch_cutoff", 
-                    label = tooltip("What cut-off points should we use for catch?", 
-                    "How much catch should we use as a cut off point to select non-commercial fishers in the FRS.
-                    For example, low cut off would mean that fishers reporting a trip with a catch higher than 
+                    label = tooltip("What cut-off point should we use for catch?", 
+                    "How much catch should we use as a cut-off point to select \"non-commercial\" fishers in the FRS.
+                    For example, low cut-off would mean that all fishers reporting a trip with a catch higher than 
                     50 lbs per trip would be classified as commercial and filtered out.",
                     placement = "right"
                     ),
@@ -150,7 +150,7 @@ ui <- page(
            # SEPARATOR
           #hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"), 
 
-          h4("Unreported CML catches"),
+          h4("Unreported commercial catch"),
 
           sliderInput("prop_unreported", 
                         label = tooltip("What percentage of the commercial catch is unreported?",
