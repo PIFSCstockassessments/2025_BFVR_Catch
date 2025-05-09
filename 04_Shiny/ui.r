@@ -60,7 +60,7 @@ ui <- page(
             h4("Key Decision Points"),
             tags$ul(
               tags$li(strong("Non-commercial fisher count:"), " Adjust for unregistered vessels and inactive vessels"),
-              tags$li(strong("FRS data filtering:"), " Select appropriate catch cutoff points to identify non-commercial proxy fishers"),
+              tags$li(strong("FRS data filtering:"), " Select appropriate catch cut-off points to identify non-commercial proxy fishers"),
               tags$li(strong("Commercial catch adjustment:"), " Account for unreported commercial catches")
             ),
             
