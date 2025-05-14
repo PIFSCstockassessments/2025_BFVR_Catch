@@ -81,4 +81,3 @@
       # Increase plot margins to avoid truncation
       theme(plot.margin = margin(10, 10, 10, 10))
   })
-}
