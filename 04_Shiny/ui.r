@@ -109,7 +109,7 @@ ui <- page(
                         the people you see/hear about fishing for Deep7 are not registered.",
                         placement = "right"
                         ),
-                     min = 25, max = 100, value = 100, step = 25, post = "%")|> 
+                     min = 50, max = 100, value = 100, step = 10, post = "%")|> 
           tagAppendAttributes(class = "compact-input"),
    
           # SEPARATOR
