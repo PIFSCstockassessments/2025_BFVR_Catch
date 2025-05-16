@@ -1,5 +1,4 @@
  library(ggimage)
- # Calculate the allocations based on slider input
  
  aclplot <- function(data){
  # Create the new visualization with 200 individual fish using geom_image
