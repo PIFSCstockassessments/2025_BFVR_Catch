@@ -484,13 +484,15 @@ output$acl_table <- reactable::renderReactable({
               ACL = (ACL_total * recent_cml_prop) - 40, #-40 for demonstration purposes to get the ACL closer to assessment ACL 
               recent_catch = recent_catch/1000,
               percent_acl = (recent_catch/ACL),
-              percent_recent = recent_catch/mean_catch)
+              percent_recent = recent_catch/mean_catch) %>%
+      mutate(ACL_total = ACL_total - 40)
     df <- data.frame(
-      "type" = c("ACL (reported commercial catch)", "Recent reported commercial catch (2018-2022)",
+      "type" = c("Total ACL", "ACL (reported commercial catch)", "Recent reported commercial catch (2018-2022)",
       "Recent reported commercial catch relative to total catch", 
       "Recent reported commercial catch relative to ACL"),
-      "Assessment_2024" = c(493000, 186360, .47, .38), # recent catch: cml %>% filter(year < 2023 & year >= 2018) %>% summarise(mean(d7)), rep comm catch to total catch: cml %>% filter(year < 2023 & year >= 2018) %>% summarise(mean(d7))/TC %>% filter(Year < 2023 & Year >= 2018) %>% summarise(mean(d7))
-      "New_Scenario" = c(model_management_table$ACL*1000, 
+      "Assessment_2024" = c(1008000, 493000, 186360, .47, .38), # recent catch: cml %>% filter(year < 2023 & year >= 2018) %>% summarise(mean(d7)), rep comm catch to total catch: cml %>% filter(year < 2023 & year >= 2018) %>% summarise(mean(d7))/TC %>% filter(Year < 2023 & Year >= 2018) %>% summarise(mean(d7))
+      "New_Scenario" = c(model_management_table$ACL_total*1000,
+                  model_management_table$ACL*1000, 
                   model_management_table$recent_catch*1000,
                   model_management_table$percent_recent,
                   model_management_table$percent_acl))
@@ -512,11 +514,11 @@ output$acl_table <- reactable::renderReactable({
         Assessment_2024 = colDef(
           name = "Assessment 2024",
           cell = function(value, index) {
-            if (index == 3 | index == 4) {
-              # Format as percentage for row 3
+            if (index == 4 | index == 5) {
+              # Format as percentage for row 4 and 5
               percent(value, accuracy = 0.1)
             } else {
-              # Format with commas for rows 1 and 2
+              # Format with commas for rows 1, 2, and 3
               comma(value, accuracy = 1)
             }
           }
@@ -524,11 +526,11 @@ output$acl_table <- reactable::renderReactable({
         New_Scenario = colDef(
           name = "New Scenario",
           cell = function(value, index) {
-            if (index == 3| index == 4) {
-              # Format as percentage for row 3
+            if (index == 4| index == 5) {
+              # Format as percentage for row 4 and 5
               percent(value, accuracy = 0.1)
             } else {
-              # Format with commas for rows 1 and 2
+              # Format with commas for rows 1, 2, and 3
               comma(value, accuracy = 1)
             }
           }
@@ -542,6 +544,61 @@ output$acl_table <- reactable::renderReactable({
       )
     ) 
   })
+
+allocations <- reactive({
+  
+  req(total_catch_df())
+  
+  recent_catch <- total_catch_df() %>% 
+    filter(year >= 2018 & type == "Commercial - CML reported") %>% 
+    summarise(recent_catch = mean(catch)) %>% pull(recent_catch)
+  
+  recent_cml_prop <- total_catch_df() %>% 
+    pivot_wider(names_from = "type", values_from = "catch") %>%
+    mutate(total_catch = rowSums(across(2:last_col())),
+           cml_prop = `Commercial - CML reported`/total_catch) %>% 
+    #filter(year >= 2018) %>%
+    summarise(mean_cml_prop = mean(cml_prop)) %>% pull(mean_cml_prop)
+  
+  model_management_table <- total_catch_df() %>% group_by(year) %>% 
+    #filter(year >= 2018 & year < 2023) %>%
+    summarise(total_catch = sum(catch)) %>% 
+    summarise(mean_catch = mean(total_catch)/1000) %>%
+    mutate(biomass_2023 =( 0.022997 * mean_catch + 1.502262),
+           ACL_total = (0.002265 * mean_catch + 0.01598)*1000,
+           ACL = (ACL_total * recent_cml_prop) - 40, #-40 for demonstration purposes to get the ACL closer to assessment ACL 
+           recent_catch = recent_catch/1000,
+           percent_acl = (recent_catch/ACL),
+           percent_recent = recent_catch/mean_catch) %>%
+    mutate(ACL_total = ACL_total - 40)
+  
+  total_fish <- round(model_management_table$ACL_total/5)
+  
+  commercial <- (model_management_table$ACL/5/total_fish)*100
+  non_commercial <- 100 - commercial
+  
+  # Calculate actual fish counts based on percentages
+  commercial_fish <- round((commercial / 100) * total_fish)
+  noncommercial_fish <- total_fish - commercial_fish
+  
+  data.frame(
+    Sector = c("Commercial", "Non-commercial"),
+    Allocation = c(commercial, non_commercial),
+    FishCount = c(commercial_fish, noncommercial_fish),
+    Total = c(total_fish)
+  )
+})
+
+output$allocation_plot <- renderPlot({
+  req(allocations())
+  
+  data <- allocations()
+  
+  acl_plot <- aclplot(data)
+  
+  acl_plot
+})
+
 
 } #end of server
 
