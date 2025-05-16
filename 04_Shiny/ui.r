@@ -88,30 +88,30 @@ ui <- page(
       page_sidebar(
         sidebar = sidebar(
           width = 400,
-                   
+          
           h4("Number of active non-commercial fishers"),
-
+          
           sliderInput("percent_active",
-            label = tooltip("What percentage of BF-registered 
+                      label = tooltip("What percentage of BF-registered 
             fishers are fishing for Deep7?",
-            "This is the percentage of fishers registered in the BFVR
+                                      "This is the percentage of fishers registered in the BFVR
             that actually go fishing for Deep7.", 
-            placement = "right"), 
-            min = 0, max = 100, value = 100, step = 10, post = "%")|> 
-          tagAppendAttributes(class = "compact-input"), 
+                                      placement = "right"), 
+                      min = 0, max = 100, value = 100, step = 10, post = "%")|> 
+            tagAppendAttributes(class = "compact-input"), 
           
           sliderInput("percent_unregistered", 
-                        label = tooltip("What percentage of 
+                      label = tooltip("What percentage of 
                         fishers fishing for Deep7 are BF-registered?",
-                        "How often do you see or hear about people fishing for Deep7
+                                      "How often do you see or hear about people fishing for Deep7
                         that are not registered in the BFVR? If you select 100% that means everyone you see/hear about
                         fishing for Deep7 is registered on the BFVR. If you select 50%, that means about half of 
                         the people you see/hear about fishing for Deep7 are not registered.",
-                        placement = "right"
-                        ),
-                     min = 50, max = 100, value = 100, step = 10, post = "%")|> 
-          tagAppendAttributes(class = "compact-input"),
-   
+                                      placement = "right"
+                      ),
+                      min = 50, max = 100, value = 100, step = 10, post = "%")|> 
+            tagAppendAttributes(class = "compact-input"),
+          
           # SEPARATOR
           #hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"),
           
@@ -126,19 +126,19 @@ ui <- page(
           #             "Should we classify fishers based only on their total Deep7 catch or also their catch by species?",
           #             choices = c("Deep7 only", "All taxa"), 
           #             selected = "All taxa"),
-
+          
           radioButtons("catch_cutoff", 
-                    label = tooltip("What cut-off point should we use for catch?", 
-                    "How much catch should we use as a cut-off point to select \"non-commercial\" fishers in the FRS.
+                       label = tooltip("What cut-off point should we use for catch?", 
+                                       "How much catch should we use as a cut-off point to select \"non-commercial\" fishers in the FRS.
                     For example, low cut-off would mean that all fishers reporting a trip with a catch higher than 
                     50 lbs per trip would be classified as commercial and filtered out.",
-                    placement = "right"
-                    ),
-                    choices =  c("Low cut-off (50 lb/trip)" = "low", 
-                    "Intermediate cut-off (70 lb/trip)" = "med",
-                    "High cut-off (100 lb/trip)" = "high"), 
-                    selected = "low") |> 
-          tagAppendAttributes(class = "compact-input"),
+                                       placement = "right"
+                       ),
+                       choices =  c("Low cut-off (50 lb/trip)" = "low", 
+                                    "Intermediate cut-off (70 lb/trip)" = "med",
+                                    "High cut-off (100 lb/trip)" = "high"), 
+                       selected = "low") |> 
+            tagAppendAttributes(class = "compact-input"),
           # selectInput("which_filter_level",
           #           label = tooltip("At what level should we apply our cut-off points?",
           #           "Should we use MRIP trip-level interviews and/or annual catch
@@ -147,99 +147,104 @@ ui <- page(
           #           ),
           #           choices = c("Trip", "Annual", "Both"),
           #           selected = "Trip"),
-           # SEPARATOR
+          # SEPARATOR
           #hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"), 
-
+          
           h4("Unreported commercial catch"),
-
+          
           sliderInput("prop_unreported", 
-                        label = tooltip("What percentage of the commercial catch is unreported?",
-                        "This is the catch caught by CML holders but not reported in the FRS.
+                      label = tooltip("What percentage of the commercial catch is unreported?",
+                                      "This is the catch caught by CML holders but not reported in the FRS.
                         For example, catch that is sold via social media or unsold, where some 
                         fishers may not feel the need to enter it in the FRS.",
-                        position = "right"), 
+                                      position = "right"), 
                       min = 0, max = 100, value = 0, step = 10, post = "%")|> 
-          tagAppendAttributes(class = "compact-input")
+            tagAppendAttributes(class = "compact-input")
           # actionButton("run_analysis", "Run Analysis", class = "btn-primary")
         ),
         accordion(
-        
-        accordion_panel(
-          title = "How many active non-commercial Deep7 fishers are there?",
-          tabsetPanel(
-            id = "active_fishers_plot",
-            tabPanel(
-              "Honolulu",
-              plotlyOutput("honolulu_fishers_plot")
-            ),
-          tabPanel(
-            "Hawaii",
-            plotlyOutput("hawaii_fishers_plot")
+          
+          accordion_panel(
+            title = "How many active non-commercial Deep7 fishers are there?",
+            tabsetPanel(
+              id = "active_fishers_plot",
+              tabPanel(
+                "Honolulu",
+                plotlyOutput("honolulu_fishers_plot")
+              ),
+              tabPanel(
+                "Hawaii",
+                plotlyOutput("hawaii_fishers_plot")
+              ),
+              tabPanel(
+                "Kauai",
+                plotlyOutput("kauai_fishers_plot")
+              ),
+              tabPanel(
+                "Maui",
+                plotlyOutput("maui_fishers_plot")
+              ),
+              tabPanel(
+                "All",
+                plotlyOutput("total_fishers_plot")
+              )
+            )
           ),
-          tabPanel(
-            "Kauai",
-            plotlyOutput("kauai_fishers_plot")
+          
+          accordion_panel(
+            title = "What is the Deep7 catch by year?",
+            plotlyOutput("combined_plot")
           ),
-          tabPanel(
-            "Maui",
-            plotlyOutput("maui_fishers_plot")
+          
+          accordion_panel(
+            title = "What does the Annual Catch Limits (ACL) look like?",
+            reactable::reactableOutput("acl_table")
           ),
-          tabPanel(
-            "All",
-            plotlyOutput("total_fishers_plot")
-          )
-          )
-        ),
-
-        accordion_panel(
-          title = "What is the Deep7 catch by year?",
-          plotlyOutput("combined_plot")
-        ),
-        
-        accordion_panel(
-          title = "What does the Annual Catch Limits (ACL) look like?",
-          reactable::reactableOutput("acl_table")
-        ),
-        
-        accordion_panel(
-          title = "What are the catches by species?",
-          tabsetPanel(
-            id = "species_plots",
-            tabPanel(
-              "Opakapaka",
-              plotlyOutput("opaka_plot")
-            ),
-          tabPanel(
-            "Onaga",
-            plotlyOutput("onaga_plot")
+          
+          accordion_panel(
+            title = "What does the allocation of the Total ACL look like?",
+            plotOutput("allocation_plot")
           ),
-          tabPanel(
-            "Ehu",
-            plotlyOutput("ehu_plot")
+          
+          accordion_panel(
+            title = "What are the catches by species?",
+            tabsetPanel(
+              id = "species_plots",
+              tabPanel(
+                "Opakapaka",
+                plotlyOutput("opaka_plot")
+              ),
+              tabPanel(
+                "Onaga",
+                plotlyOutput("onaga_plot")
+              ),
+              tabPanel(
+                "Ehu",
+                plotlyOutput("ehu_plot")
+              ),
+              tabPanel(
+                "Kalekale",
+                plotlyOutput("kale_plot")
+              ),
+              tabPanel(
+                "Gindai",
+                plotlyOutput("gindai_plot")
+              ),
+              tabPanel(
+                "Lehi",
+                plotlyOutput("lehi_plot")
+              ),
+              tabPanel(
+                "Hapu'upu'u",
+                plotlyOutput("hapu_plot")
+              )
+            )
           ),
-          tabPanel(
-            "Kalekale",
-            plotlyOutput("kale_plot")
-          ),
-          tabPanel(
-            "Gindai",
-            plotlyOutput("gindai_plot")
-          ),
-          tabPanel(
-            "Lehi",
-            plotlyOutput("lehi_plot")
-          ),
-          tabPanel(
-            "Hapu'upu'u",
-            plotlyOutput("hapu_plot")
-          )
-          )
-        ),
-        
-        # Control initial state - can be "first" (default), "all", or "none"
-        open = "first"
+          
+          # Control initial state - can be "first" (default), "all", or "none"
+          open = "first"
         )
-    
+        
       )
     )
   )
