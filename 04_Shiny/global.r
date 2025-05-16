@@ -14,6 +14,7 @@ library(shinyjs)
 
 #source plotting function
 source(file.path("layered_barplot.r"))
+source(file.path("acl_allocation_plot.r"))
 
 catch_colors <- c("Commercial - CML reported" = "#F09008FF", 
             "Commercial - CML unreported" = "#7868C0FF", 
