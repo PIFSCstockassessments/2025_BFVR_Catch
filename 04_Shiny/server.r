@@ -439,17 +439,16 @@ total_catch_df <- reactive({
   plot_data <- plot_data %>%
     mutate(type = factor(type, 
     levels = c("Non-commercial - BFVR approach", "Commercial - CML unreported", 
-    "Commercial - CML reported")))
-
-  return(plot_data)
-
+    "Commercial - CML reported"))) %>% 
+    mutate(unreported = options$prop_unreported)
 }) #end of total_catch_df
 
 
 # Create a total Deep7 plot
 output$combined_plot <- renderPlotly({
   req(total_catch_df())
-  plot_data <- total_catch_df()
+  plot_data <- total_catch_df() %>% 
+    select(-unreported)
   # Current visibility states
   current_states <- visibilityState()
 
@@ -465,17 +464,19 @@ output$acl_table <- reactable::renderReactable({
     req(total_catch_df())
     
     recent_catch <- total_catch_df() %>% 
+      select(-unreported) %>% 
       filter(year >= 2018 & type == "Commercial - CML reported") %>% 
       summarise(recent_catch = mean(catch)) %>% pull(recent_catch)
 
     recent_cml_prop <- total_catch_df() %>% 
+      select(-unreported) %>% 
     pivot_wider(names_from = "type", values_from = "catch") %>%
     mutate(total_catch = rowSums(across(2:last_col())),
        cml_prop = `Commercial - CML reported`/total_catch) %>% 
     #filter(year >= 2018) %>%
     summarise(mean_cml_prop = mean(cml_prop)) %>% pull(mean_cml_prop)
 
-    model_management_table <- total_catch_df() %>% group_by(year) %>% 
+    model_management_table <- total_catch_df() %>% select(-unreported) %>% group_by(year) %>% 
       #filter(year >= 2018 & year < 2023) %>%
       summarise(total_catch = sum(catch)) %>% 
       summarise(mean_catch = mean(total_catch)/1000) %>%
@@ -484,8 +485,8 @@ output$acl_table <- reactable::renderReactable({
               ACL = (ACL_total * recent_cml_prop) - 40, #-40 for demonstration purposes to get the ACL closer to assessment ACL 
               recent_catch = recent_catch/1000,
               percent_acl = (recent_catch/ACL),
-              percent_recent = recent_catch/mean_catch) %>%
-      mutate(ACL_total = ACL_total - 40)
+              percent_recent = recent_catch/mean_catch) #%>%
+      #mutate(ACL_total = ACL_total - 40)
     df <- data.frame(
       "type" = c("Total ACL", "ACL (reported commercial catch)", "Recent reported commercial catch (2018-2022)",
       "Recent reported commercial catch relative to total catch", 
@@ -549,18 +550,18 @@ allocations <- reactive({
   
   req(total_catch_df())
   
-  recent_catch <- total_catch_df() %>% 
+  recent_catch <- total_catch_df() %>% select(-unreported) %>% 
     filter(year >= 2018 & type == "Commercial - CML reported") %>% 
     summarise(recent_catch = mean(catch)) %>% pull(recent_catch)
   
-  recent_cml_prop <- total_catch_df() %>% 
+  recent_cml_prop <- total_catch_df() %>% select(-unreported) %>% 
     pivot_wider(names_from = "type", values_from = "catch") %>%
     mutate(total_catch = rowSums(across(2:last_col())),
            cml_prop = `Commercial - CML reported`/total_catch) %>% 
     #filter(year >= 2018) %>%
     summarise(mean_cml_prop = mean(cml_prop)) %>% pull(mean_cml_prop)
   
-  model_management_table <- total_catch_df() %>% group_by(year) %>% 
+  model_management_table <- total_catch_df() %>% select(-unreported) %>% group_by(year) %>% 
     #filter(year >= 2018 & year < 2023) %>%
     summarise(total_catch = sum(catch)) %>% 
     summarise(mean_catch = mean(total_catch)/1000) %>%
@@ -569,23 +570,27 @@ allocations <- reactive({
            ACL = (ACL_total * recent_cml_prop) - 40, #-40 for demonstration purposes to get the ACL closer to assessment ACL 
            recent_catch = recent_catch/1000,
            percent_acl = (recent_catch/ACL),
-           percent_recent = recent_catch/mean_catch) %>%
-    mutate(ACL_total = ACL_total - 40)
+           percent_recent = recent_catch/mean_catch)
   
-  total_fish <- round(model_management_table$ACL_total/5)
+  total_fish <- model_management_table$ACL_total/10
   
-  commercial <- (model_management_table$ACL/5/total_fish)*100
-  non_commercial <- 100 - commercial
+  commercial <- round((model_management_table$ACL/10/total_fish)*100)
+  unreported_prop <- total_catch_df() %>% summarise(prop = first(unreported)) %>% pull(prop) %>% as.numeric()
+  unreported <- round(unreported_prop * commercial)
+  non_commercial <- 100 - commercial - unreported
   
   # Calculate actual fish counts based on percentages
   commercial_fish <- round((commercial / 100) * total_fish)
-  noncommercial_fish <- total_fish - commercial_fish
+  unreported_fish <- round((unreported / 100) * total_fish)
+  total_fish <- round(total_fish)
+  noncommercial_fish <- total_fish - commercial_fish - unreported_fish
   
   data.frame(
-    Sector = c("Commercial", "Non-commercial"),
-    Allocation = c(commercial, non_commercial),
-    FishCount = c(commercial_fish, noncommercial_fish),
-    Total = c(total_fish)
+    Sector = c("Commercial", "Non-commercial", "Unreported"),
+    Allocation = c(commercial, non_commercial, unreported),
+    FishCount = c(commercial_fish, noncommercial_fish, unreported_fish),
+    Total = rep(total_fish, 3),
+    UnreportedProp = rep(unreported_prop, 3)
   )
 })
 
@@ -594,12 +599,19 @@ output$allocation_plot <- renderPlot({
   
   data <- allocations()
   
-  acl_plot <- aclplot(data)
+  unreported_prop <- allocations() %>% summarise(unreported = first(UnreportedProp)) %>% pull(unreported) %>% as.numeric()
   
-  acl_plot
+  if (unreported_prop >= 0.5){
+    aclplot(data) 
+  }
+  else{
+    new_plot <- new_acl_plot(data)
+    
+    old_acl_plot + plot_spacer() + new_plot +
+    plot_layout(widths = c(1, 0.1, 1), guides = "collect") &
+    theme(legend.position = "bottom", legend.text = element_text(size = 10))
+  }
 })
 
 
 } #end of server
-
-
