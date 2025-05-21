@@ -574,9 +574,10 @@ allocations <- reactive({
   
   total_fish <- model_management_table$ACL_total/10
   
-  commercial <- round((model_management_table$ACL/10/total_fish)*100)
+  commercial <- (model_management_table$ACL/10/total_fish)*100
   unreported_prop <- total_catch_df() %>% summarise(prop = first(unreported)) %>% pull(prop) %>% as.numeric()
-  unreported <- round(unreported_prop * commercial)
+  unreported <- round(commercial/(1-unreported_prop) - commercial)
+  commercial <- round(commercial)
   non_commercial <- 100 - commercial - unreported
   
   # Calculate actual fish counts based on percentages
