@@ -5,6 +5,6 @@ account: megumi.oshima
 server: connect.fisheries.noaa.gov
 hostUrl: https://connect.fisheries.noaa.gov/__api__
 appId: 458
-bundleId: 2510
+bundleId: 2713
 url: https://connect.fisheries.noaa.gov/content/093fc1b8-928f-4ee0-8c3d-bae82dc78295/
 version: 1

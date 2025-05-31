@@ -4,8 +4,9 @@ library(dplyr)
 library(patchwork)
 
 aclplot <- function(data){
+   options(ggimage.keytype = "image")
   # Fish icon URL
-  fish_icon_url <- "~/R/2025_BFVR_Catch-feat/04_Shiny/fishicon.png"
+  fish_icon_url <- "www/fishicon.png"
   
   # New number of fish in each category
   commercial_fish <- data$FishCount[1]
@@ -38,7 +39,7 @@ aclplot <- function(data){
   # Create labels for every old fish
   old_labels <- c(
     rep("Commercial - CML reported", old_commercial_fish),
-    rep("Non-commercial - BFVR approach and CML unreported", old_noncommercial_fish)
+    rep("MRIP (Non-commercial and CML unreported)", old_noncommercial_fish)
   )
   
   num <- total_fish - old_total_fish
@@ -69,7 +70,7 @@ aclplot <- function(data){
   # Define consistent factor levels for all sector types
   sector_levels <- c(
     "Commercial - CML reported",
-    "Non-commercial - BFVR approach and CML unreported",
+    "MRIP (Non-commercial and CML unreported)",
     "Non-commercial - BFVR approach",
     "Commercial - CML unreported"
   )
@@ -108,7 +109,7 @@ aclplot <- function(data){
   shared_color_scale <- scale_color_manual(
     values = c(
       "Commercial - CML reported" = "#F09008FF",
-      "Non-commercial - BFVR approach and CML unreported" = "#4D6A8A",
+      "MRIP (Non-commercial and CML unreported)" = "#4D6A8A",
       "Non-commercial - BFVR approach" = "#488820FF",
       "Commercial - CML unreported" = "#7868C0FF"
     ),
@@ -119,9 +120,11 @@ aclplot <- function(data){
   
   # Plot 1: old allocation
   p1 <- ggplot(old_all_positions, aes(x = x, y = y, image = image, color = sector, alpha = alpha)) +
-    geom_image(size = scale, key_glyph = draw_key_image) +
+    geom_image(aes(image = image), size = scale, key_glyph = "point") +
+    #geom_image(size = scale, key_glyph = draw_key_image, show.legend = FALSE) +
     shared_color_scale +
     scale_alpha(range = c(0, 1), guide = "none") +  # hide alpha from legend
+    guides(color = guide_legend(override.aes = list(size = 4))) +
     theme_void() +
     theme(
       plot.title = element_text(hjust = 0.5, size = 20),
@@ -138,9 +141,11 @@ aclplot <- function(data){
   
   # Plot 2: new allocation
   p2 <- ggplot(all_positions, aes(x = x, y = y, image = image, color = sector, alpha = alpha)) +
-    geom_image(size = scale, key_glyph = draw_key_image) +
+    geom_image(aes(image = image), size = scale, key_glyph = "point") +
+    #geom_image(size = scale, key_glyph = draw_key_image, show.legend = FALSE) +
     shared_color_scale +
     scale_alpha(range = c(0, 1), guide = "none") +  # hide alpha from legend
+    guides(color = guide_legend(override.aes = list(size = 4))) +
     theme_void() +
     theme(
       plot.title = element_text(hjust = 0.5, size = 20),
@@ -160,6 +165,6 @@ aclplot <- function(data){
   return(
     (p1 + plot_spacer() + p2) +
       plot_layout(widths = c(1, 0.1, 1), guides = "collect") &
-      theme(legend.position = "bottom", legend.text = element_text(size = 10))
+      theme(legend.position = "bottom", legend.text = element_text(size = 12)) 
   )
 }

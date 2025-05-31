@@ -1,10 +1,10 @@
 new_acl_plot <- function(data){
-  library(ggplot2)
-  library(ggimage)
-  library(dplyr)
-  
+  # library(ggplot2)
+  # library(ggimage)
+  # library(dplyr)
+   options(ggimage.keytype = "image")
   # Fish icon URL
-  fish_icon_url <- "~/R/2025_BFVR_Catch-feat/04_Shiny/fishicon.png"
+  fish_icon_url <- "www/fishicon.png"
   
   # Number of fish in each category
   commercial_fish <- data$FishCount[1]
@@ -34,7 +34,7 @@ new_acl_plot <- function(data){
   # Define consistent factor levels
   sector_levels <- c(
     "Commercial - CML reported",
-    "Non-commercial - BFVR approach and CML unreported",
+    "MRIP (Non-commercial and CML unreported)",
     "Non-commercial - BFVR approach",
     "Commercial - CML unreported"
   )
@@ -56,7 +56,7 @@ new_acl_plot <- function(data){
   shared_color_scale <- scale_color_manual(
     values = c(
       "Commercial - CML reported" = "#F09008FF",
-      "Non-commercial - BFVR approach and CML unreported" = "#4D6A8A",
+      "MRIP (Non-commercial and CML unreported)" = "#4D6A8A",
       "Non-commercial - BFVR approach" = "#488820FF",
       "Commercial - CML unreported" = "#7868C0FF"
     ),
@@ -69,14 +69,15 @@ new_acl_plot <- function(data){
   
   # Plot
   new_acl_plot <- ggplot(all_positions, aes(x = x, y = y, image = image, color = sector, alpha = alpha)) +
-    geom_image(size = scale, key_glyph = draw_key_image) +
+    geom_image(aes(image = image), size = scale, key_glyph = "point") +
+    #geom_image(size = scale, key_glyph = draw_key_image) +
     shared_color_scale +
     scale_alpha(range = c(0, 1), guide = "none") +  # hide alpha from legend
+    guides(color = guide_legend(override.aes = list(size = 4))) +
     theme_void() +
     theme(
-      legend.position = "bottom",
       plot.title = element_text(hjust = 0.5, size = 20),
-      plot.subtitle = element_text(hjust = 0.5, size = 10, margin = margin(b = 5, t = 5))
+      plot.subtitle = element_text(hjust = 0.5, size = 12, margin = margin(b = 5, t = 5))
     ) +
     labs(
       title = "Allocation of Total ACL Between Sectors (BFVR)",

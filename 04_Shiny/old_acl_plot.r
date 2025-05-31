@@ -1,9 +1,10 @@
-library(ggplot2)
-library(ggimage)
-library(dplyr)
+# library(ggplot2)
+# library(ggimage)
+# library(dplyr)
 
 # Fish icon URL
-fish_icon_url <- "~/R/2025_BFVR_Catch-feat/04_Shiny/fishicon.png"
+options(ggimage.keytype = "image")
+fish_icon_url <- "www/fishicon.png"
 
 old_total_fish <- 101
 
@@ -21,7 +22,7 @@ old_rows <- 10
 # Create labels
 old_labels <- c(
   rep("Commercial - CML reported", old_commercial_fish),
-  rep("Non-commercial - BFVR approach and CML unreported", old_noncommercial_fish)
+  rep("MRIP (Non-commercial and CML unreported)", old_noncommercial_fish)
 )
 
 # Create grid positions
@@ -38,7 +39,7 @@ old_all_positions <- old_all_positions %>%
 # Define consistent factor levels
 sector_levels <- c(
   "Commercial - CML reported",
-  "Non-commercial - BFVR approach and CML unreported",
+  "MRIP (Non-commercial and CML unreported)",
   "Non-commercial - BFVR approach",
   "Commercial - CML unreported"
 )
@@ -62,7 +63,7 @@ if(length(missing_levels) > 0) {
 shared_color_scale <- scale_color_manual(
   values = c(
     "Commercial - CML reported" = "#F09008FF",
-    "Non-commercial - BFVR approach and CML unreported" = "#4D6A8A",
+    "MRIP (Non-commercial and CML unreported)" = "#4D6A8A",
     "Non-commercial - BFVR approach" = "#488820FF",
     "Commercial - CML unreported" = "#7868C0FF"
   ),
@@ -74,16 +75,18 @@ shared_color_scale <- scale_color_manual(
 scale <- 1 / old_cols
 
 # Plot
-old_acl_plot <- ggplot(old_all_positions, aes(x = x, y = y, image = image, color = sector, alpha = alpha)) +
-  geom_image(size = scale, key_glyph = draw_key_image, show.legend = TRUE) +
-  shared_color_scale +
+old_acl_plot <-  ggplot(old_all_positions, aes(x = x, y = y, image = image, color = sector, alpha = alpha)) +
+    geom_image(aes(image = image), size = scale, key_glyph = "point") +
+    #geom_image(size = scale, key_glyph = draw_key_image) +
+    shared_color_scale +
   scale_alpha(range = c(0, 1), guide = "none") +  # hide alpha legend
+  guides(color = guide_legend(override.aes = list(size = 4))) +
   theme_void() +
   theme(
     legend.position = "bottom",
     legend.text = element_text(size = 10),
     plot.title = element_text(hjust = 0.5, size = 20),
-    plot.subtitle = element_text(hjust = 0.5, size = 10, margin = margin(b = 5, t = 5))
+    plot.subtitle = element_text(hjust = 0.5, size = 12, margin = margin(b = 5, t = 5))
   ) +
   labs(
     title = "Allocation of Total ACL Between Sectors (2024)",

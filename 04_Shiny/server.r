@@ -606,11 +606,13 @@ output$allocation_plot <- renderPlot({
     aclplot(data) 
   }
   else{
-    new_plot <- new_acl_plot(data)
+    options(ggimage.keytype = "image")
+    new_plot <- new_acl_plot(data) + theme(legend.position = "none")
     
-    old_acl_plot + plot_spacer() + new_plot +
+
+    (old_acl_plot + plot_spacer() + new_plot) +
     plot_layout(widths = c(1, 0.1, 1), guides = "collect") &
-    theme(legend.position = "bottom", legend.text = element_text(size = 10))
+    theme(legend.position = "bottom", legend.text = element_text(size = 12)) 
   }
 })
 
