@@ -33,7 +33,7 @@ FC_sim <- reactive({
   # and the percentage of boats that are not registered in the BFVR
   FC_sim <- FC %>% 
       mutate(n_bf_fishers = n_bf_fishers * percent_active,
-      n_bf_fishers = n_bf_fishers + n_bf_fishers * (1 - percent_unregistered)) 
+      n_bf_fishers = n_bf_fishers/percent_unregistered) 
 
 })
 
