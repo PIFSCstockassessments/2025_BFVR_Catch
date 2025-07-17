@@ -7,6 +7,10 @@ page-layout: article
 
 # General description
 
+IMPORTANT: This specific script is depreciated and a more recent version of this script and its main output (fisher_counts.csv) is available on the noaa-pifsc github here:
+
+[Hawaii_Fisher_List](https://github.com/noaa-pifsc/Hawaii_Fisher_List)
+
 This script merges the Hawaii Bottomfish Vessel Registry (BFVR) and the Commercial Marine License registry (CML) into a single list of registered boat-based fishers (i.e. fishers either on the BFVR or CML registries). The data inputs are license transaction records with dates provided by the State of Hawaii (renewal, registration, etc.) for both the BFVR and the CML registries:
 
 The script first cleans up those transaction lists, pivots "Vessel ID" to multiple columns in the BFVR list in order to convert from a vessel-based list to a fisher-based list (the CML registry is already a fisher-based list). The script then does a fisher-to-fisher merge of those lists iteratively using : CML no, vessel ID, and phone number.
