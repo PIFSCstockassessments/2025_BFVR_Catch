@@ -2,26 +2,33 @@
 title: "Annual Deep 7 catch from the Bottomfish Vessel Registry"
 author: "Marc Nadon"
 format: html
+editor: 
+  markdown: 
+    wrap: 72
 ---
 
 ## General description
 
-This script creates annual distributions of species-specific mean-catch-per-vessel
-by county using a selection of fishers from the Fishing Reporting System (FRS) to
-serve as non-commercial proxies. This involves classifying all cml_no x year
-records as either "commercial" or "non-commercial", based on a series of filters :
-a) cml owner conducted a trip with a high catch in a given year, with per-trip max
-catch trigger points derived from MRIP "never-sell" interviews (see script
-03_MRIP_interviews_catch.qmd), and b) cml owner had a high catch per year, derived
-from Lamson (2007) mail surveys. These filters are applied at both the species
-level and all D7 together.
+This script creates annual distributions of species-specific
+mean-catch-per-vessel by county using a selection of fishers from the
+Fishing Reporting System (FRS) to serve as non-commercial proxies. This
+involves classifying all cml_no x year records as either "commercial" or
+"non-commercial", based on a series of filters : a) cml owner conducted
+a trip with a high catch in a given year, with per-trip max catch
+trigger points derived from MRIP "never-sell" interviews (see script
+03_MRIP_interviews_catch.qmd), and b) cml owner had a high catch per
+year, derived from Lamson (2007) mail surveys. These filters are applied
+at both the species level and all D7 together.
 
-The script does this by 1) loading a list of bottomfish fishers and establishing
-the number of active fishers in a given year, 2) loading catch reports contained
-in the Fisher Reporting System (FRS), 3) selecting a subset of fishers from the
-FRS (i.e. non-commercial fisher proxies) , and 4) sampling annual catches by
-county from these fishers. The end product are distributions of non-commercial
-Deep 7 catches in Hawaii, by year.
+The script does this by 1) loading a list of bottomfish fishers and
+establishing the number of active fishers in a given year, 2) loading
+catch reports contained in the Fisher Reporting System (FRS), 3)
+selecting a subset of fishers from the FRS (i.e. non-commercial fisher
+proxies) , and 4) sampling annual catches by county from these fishers.
+The end product are distributions of non-commercial Deep 7 catches in
+Hawaii, by year. Note that the fisher list and fisher count files come
+from the Hawaii_Fisher_List repository that handles creating list of
+fishers for this and other projects.
 
 ### Load packages and define root directory
 
@@ -37,8 +44,9 @@ options(dplyr.summarise.inform = FALSE)
 
 ## Enter the limits that define non-commercial proxies in the FRS
 
-These limits are derived from the MRIP fishing trip interviews (2004-2022) and
-represent the 99th percentile of catches, when the catches are not zero.
+These limits are derived from the MRIP fishing trip interviews
+(2004-2022) and represent the 99th percentile of catches, when the
+catches are not zero.
 
 ```{r}
 # Per-trip limits (MRIP interviews 2004-2022)
@@ -65,11 +73,11 @@ gindai_lbs_per_year <- 82
 We need the registered fisher list and the FRS data.
 
 ```{r}
-# Load fisher list from 01_Registered_fisher_list.qmd
-FL <- read_xlsx(fs::path(root_dir,"03_Outputs","Hawaii Registered Fishers.xlsx"))
+# Load fisher list from Hawaii_Fisher_List repository found on NOAA-PIFSC
+FL <- read_xlsx(fs::path(root_dir,"01_Data","Hawaii Registered Fishers.xlsx"))
 
-# Load fisher counts from 01_Registered_fisher_list.qmd.
-FC <- fread(fs::path(root_dir,"03_Outputs","Fisher_counts.csv")) %>% 
+# Load fisher counts from Hawaii_Fisher_List repository.
+FC <- fread(fs::path(root_dir,"01_Data","Fisher_counts.csv")) %>% 
               filter(cml_registr=="N")
 
 # Load FRS data.
@@ -105,8 +113,8 @@ F1[species_fk==36]$species_fk <- 21 #Set ehu code 36 to new code 21
 F1$species_fk <- paste0("s",F1$species_fk)
 ```
 
-Now, let's join catch data with fisher information from the Hawaii Registered
-Fisher list.
+Now, let's join catch data with fisher information from the Hawaii
+Registered Fisher list.
 
 ```{r}
 F1 <- F1 %>% left_join(FL,by=join_by(cml_no.fs==cml_no,year))
@@ -116,10 +124,11 @@ cat("A small number of records didn't match: ",nrow(unique(F1[is.na(county)])))
 F1 <- F1 %>% filter(!is.na(county))
 ```
 
-[NOTE: there are about 50 cml_no with no county info. Checking transaction list,
-these are CML that didn't have a vessel_id listed... and said Captain==N, but
-still reported D7 ("no vessel" cmls were filtered early on in Step 1, thus the
-lack of match). What to do with these?]{.underline}
+[NOTE: there are about 50 cml_no with no county info. Checking
+transaction list, these are CML that didn't have a vessel_id listed...
+and said Captain==N, but still reported D7 ("no vessel" cmls were
+filtered early on in Step 1, thus the lack of match). What to do with
+these?]{.underline}
 
 Create unique identifiers for trips and sum catch by species
 
@@ -147,15 +156,15 @@ F2$allsp <- rowSums(F2[,7:ncol(F2)])
 F2 <- F2 %>% select(year:trip_id,s20,s15,s17,s19,s21,s22,s58,s97,d7,allsp)
 ```
 
-Save this Fisher trip information for the Shinny app used to explore the different
-options available to generate non-commercial catch.
+Save this Fisher trip information for the Shinny app used to explore the
+different options available to generate non-commercial catch.
 
 ```{r}
 write_csv(F2,fs::path(root_dir,"03_Outputs","FRS_trips.csv"))
 ```
 
-Classify all CMLs as either "commercial" (C) or "non-commercial" (NC), based on
-the per-trip limits defined previously.
+Classify all CMLs as either "commercial" (C) or "non-commercial" (NC),
+based on the per-trip limits defined previously.
 
 ```{r}
 # All trips classified as non-commercial as a starting point.
@@ -194,7 +203,8 @@ ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","Trips_all.png"),
        height=4,width=8)
 ```
 
-Quick check on the distribution of trip catches for all BF + caught a D7 fishers.
+Quick check on the distribution of trip catches for all BF + caught a D7
+fishers.
 
 ```{r}
 F2 %>% filter(d7!=0&bf_registr=="Y"&year==2023) %>% ggplot(aes(x=d7))+
@@ -207,8 +217,8 @@ ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","Comm_Trip_2024_D7.png"),
        height=5,width=8)
 ```
 
-Let's sum the trip catch by *year* and *cml_no*, and merge the fisher information
-from the step above with this data set.
+Let's sum the trip catch by *year* and *cml_no*, and merge the fisher
+information from the step above with this data set.
 
 ```{r}
 F3 <- F2 %>% group_by(year,cml_no.fs,bf_registr,cml_registr,county) %>% 
@@ -237,9 +247,10 @@ Now we can apply the annual catch filters derived from Lamson (2007).
 #cat("Number of NC fishers, post-filter: ",nrow(F3[fisher_type=="NC"]))
 ```
 
-An important step is to decide which fishers to remove from this data set. One
-filter we discussed was to remove fishers that did not catch a single D7 during a
-year. Another discussion is to just keep fishers registered on the BFVR.
+An important step is to decide which fishers to remove from this data
+set. One filter we discussed was to remove fishers that did not catch a
+single D7 during a year. Another discussion is to just keep fishers
+registered on the BFVR.
 
 ```{r}
 cat("Prop. caught D7: ",round(nrow(F3[d7>0])/nrow(F3),2),"\n")
@@ -247,8 +258,8 @@ cat("Prop. caught D7 and BF registered: ",
              round(nrow(F3[d7>0&bf_registr=="Y"])/nrow(F3),2))
 ```
 
-Important step: decide which filters to apply. Let's start with keep fishers D7\>0
-and BF registered only.
+Important step: decide which filters to apply. Let's start with keep
+fishers D7\>0 and BF registered only.
 
 ```{r}
 F3 <- F3 %>% filter(d7!=0&bf_registr=="Y")
@@ -256,10 +267,12 @@ F3 <- F3 %>% filter(d7!=0&bf_registr=="Y")
 #F3 <- F3 %>% filter(d7!=0)
 ```
 
-NOTE: the difference between these two filters appear to be about 29,000 lb vs
-30,000 lb yearly in average catch. Not as big of a deal as originally thought.
+NOTE: the difference between these two filters appear to be about 29,000
+lb vs 30,000 lb yearly in average catch. Not as big of a deal as
+originally thought.
 
-Now let's only keep the "non-commercial" fisher proxies and clean up the data.
+Now let's only keep the "non-commercial" fisher proxies and clean up the
+data.
 
 ```{r}
 F4 <- F3 %>% filter(fisher_type=="NC") %>% 
@@ -269,11 +282,12 @@ F4 <- F3 %>% filter(fisher_type=="NC") %>%
 
 ## Generate annual non-commercial catch distribution
 
-Now that we have 1) the number of active non-commercial BF fisher by year, and 2)
-a proxy data set of annual catch per "non-commercial" fisher, we can sample "n"
-times from that annual catch data set, where "n" is the number of non-comm. BF
-fishers in a specific *year* and *county*. This will generate a final distribution
-of non-commercial catches by year.
+Now that we have 1) the number of active non-commercial BF fisher by
+year, and 2) a proxy data set of annual catch per "non-commercial"
+fisher, we can sample "n" times from that annual catch data set, where
+"n" is the number of non-comm. BF fishers in a specific *year* and
+*county*. This will generate a final distribution of non-commercial
+catches by year.
 
 ```{r}
 # Add the # of NC vessels by year x County to the catch data
