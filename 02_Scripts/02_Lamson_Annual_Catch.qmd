@@ -90,7 +90,8 @@ Let's create some plots.
 ```{r}
 # Remove rare species and uku.
 LMS <- LM %>% filter(!(sp_frs_id %in% c("allBF","s58","s15")))
-QS <- Qt.sp %>% filter(!(sp_frs_id %in% c("allBF","s58","s15")))
+QS <- Qt.sp %>% filter(!(sp_frs_id %in% c("allBF","s58","s15"))) %>% 
+  as.data.table()
 
 # Per-species in pounds
 ggplot(data=LMS,aes(x=lbs_caught))+
@@ -107,4 +108,17 @@ ggplot(data=LMS,aes(x=lbs_caught))+
 
 ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","Lamson_Sp_Lbs_Caught.png"),
        height=8,width=10,dpi=300)
+
+# D7 totals
+ggplot(data=LMS,aes(x=lbs_caught)) + geom_histogram(binwidth=25) +
+  geom_vline(data=QS[sci_name=="Deep7"],aes(xintercept=q95),linetype="dashed")+
+  geom_vline(data=QS[sci_name=="Deep7"],aes(xintercept=q99),linetype="solid")+
+  xlim(0,2000)+
+  theme_bw(base_size=15)+
+  labs(x="Catch per year (lb)",y="Number of fishers")
+
+ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","Lamson_D7_Lbs_Caught.png"),
+       height=3,width=6)
+
+
 ```
