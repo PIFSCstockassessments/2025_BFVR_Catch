@@ -130,11 +130,13 @@ ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","MRIP_Sp_Lbs_Caught.png")
 # D7 totals
 ggplot(data=IT.D7,aes(x=num_caught)) + geom_histogram(binwidth=1)
 ggplot(data=IT.D7,aes(x=lbs_caught)) + geom_histogram(binwidth=5) +
-  geom_vline(data=FS[sci_name=="Deep7"],aes(xintercept=q99),col="red")+
-  theme_bw(base_size=14)+
-  labs(x="Deep7 catch per trip (lbs)",y="Number of trips")
+  geom_vline(data=FS[sci_name=="Deep7"],aes(xintercept=q95),linetype="dashed")+
+  geom_vline(data=FS[sci_name=="Deep7"],aes(xintercept=q99),linetype="solid")+
+  xlim(0,500)+
+  theme_bw(base_size=15)+
+  labs(x="Catch per trip (lb)",y="Number of trips")
 
 ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","MRIP_D7_Lbs_Caught.png"),
-       height=6,width=8)
+       height=3,width=6)
    
 ```
