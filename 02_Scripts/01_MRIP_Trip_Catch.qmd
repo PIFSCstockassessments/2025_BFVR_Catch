@@ -113,15 +113,15 @@ ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","MRIP_Sp_Num_Caught.png")
 # Per-species in pounds
 ggplot(data=ITS,aes(x=lbs_caught))+
   geom_histogram()+
-  geom_vline(data=FS,aes(xintercept=q90),col="red")+
-  geom_vline(data=FS,aes(xintercept=q95),col="darkorange")+
-  geom_vline(data=FS,aes(xintercept=q99),col="darkgreen")+
-  geom_text(data=FS,aes(label=q90,x=q90,y=Inf),hjust=1.2,vjust=2)+
-  geom_text(data=FS,aes(label=q95,x=q95,y=Inf,),hjust=0.8,vjust=2)+
-  geom_text(data=FS,aes(label=q99,x=q99,y=Inf),hjust=0.5,vjust=2)+
+  #geom_vline(data=FS,aes(xintercept=q90),col="red")+
+  geom_vline(data=FS,aes(xintercept=q95),linetype="dashed")+
+  geom_vline(data=FS,aes(xintercept=q99),linetype="solid")+
+  #geom_text(data=FS,aes(label=q90,x=q90,y=Inf),hjust=1.2,vjust=2)+
+  geom_text(data=FS,aes(label=q95,x=q95,y=Inf,),hjust=1.1,vjust=1.7)+
+  geom_text(data=FS,aes(label=q99,x=q99,y=Inf),hjust=1,vjust=2.3)+
   facet_wrap(~sci_name,scales="free")+
   theme_bw(base_size=16)+
-  labs(x="Pounds caught per trip",y="Number of trips")
+  labs(x="Catch per trip (lb)",y="Number of trips")
 
 ggsave(last_plot(),file=fs::path(root_dir,"03_Outputs","MRIP_Sp_Lbs_Caught.png"),
        height=8,width=10,dpi=300)
