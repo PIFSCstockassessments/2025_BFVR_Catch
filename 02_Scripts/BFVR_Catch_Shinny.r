@@ -47,7 +47,7 @@ QT_annual <- fread(fs::path(root_dir,"03_Outputs","lamson_quantiles.csv")) %>%
 # Load fisher counts outputted from 01_Registered_fisher_list.qmd.
 
 FC <- fread(fs::path(root_dir,"03_Outputs", "Fisher_counts.csv")) %>% 
-  filter(cml_registr == "N") 
+  filter(cml_registr == "N") %>% select(-cml_registr)
 
 # Load FRS trip data outputted from 02_Annual_catch_from_BFVR.qmd
 F2 <- fread(fs::path(root_dir,"03_Outputs","FRS_trips_annon.csv"))
