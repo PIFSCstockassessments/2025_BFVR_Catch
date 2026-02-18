@@ -4,56 +4,146 @@ server <- function(input, output, session) {
   
 # Reactive values to store results
 results <- reactiveVal(NULL)
+# Create a reactive value to store legend state for each trace by name
+visibilityState <- reactiveVal(list(
+  "Total Catch" = "legendonly",
+  "Total catch used in the 2024 assessment" = "legendonly",
+  "Commercial - CML reported" = "legendonly",
+  "Non-commercial - BFVR approach" = TRUE,  # Only this one visible by default
+  "Commercial - CML unreported" = TRUE
+))
 
 # Create a reactive trigger that changes whenever run 
 # analysis button is clicked
-sim_trigger <- reactive({
-# Dependencies: filtered data and simulation inputs
-list(
-    input$run_analysis      # Also allow manual triggering
-)
-# Return the current time as a convenient non-NULL value
-return(Sys.time())
+# sim_trigger <- reactive({
+# # Dependencies: filtered data and simulation inputs
+# list(
+#     input$run_analysis      # Also allow manual triggering
+# )
+# # Return the current time as a convenient non-NULL value
+# return(Sys.time())
+# })
+
+FC_sim <- reactive({
+
+  percent_active <- (input$percent_active/100)
+  percent_registered <- (input$percent_registered/100)
+  # Apply the correction related to the assumed # of BF registered fishers 
+  # catching at least one deep7 in any given year
+  # and the percentage of boats that are not registered in the BFVR
+  FC_sim <- FC %>% 
+      mutate(n_bf_fishers = n_bf_fishers * percent_active,
+      n_bf_fishers = n_bf_fishers/percent_registered) 
+
+})
+
+output$honolulu_fishers_plot <- renderPlotly({
+  req(FC_sim)
+  FC <- FC_sim()
+  
+  create_county_n_fishers_plot(FC, "Honolulu County", "#B71300")
+
+})
+
+output$hawaii_fishers_plot <- renderPlotly({
+  req(FC_sim)
+  FC <- FC_sim()
+  
+  create_county_n_fishers_plot(FC, "Hawaii County", "#826087")
+
+})
+
+output$kauai_fishers_plot <- renderPlotly({
+  req(FC_sim)
+  FC <- FC_sim()
+  
+  create_county_n_fishers_plot(FC, "Kauai County", "#002364")
+
+})
+
+output$maui_fishers_plot <- renderPlotly({
+  req(FC_sim)
+  FC <- FC_sim()
+  
+  create_county_n_fishers_plot(FC, "Maui County", "#317F3F")
+
+})
+
+output$total_fishers_plot <- renderPlotly({
+  req(FC_sim)
+  FC <- FC_sim()
+  
+  total_fishers <- FC %>% 
+    #distinct(year, county, n_bf_fishers) %>%
+    filter(year < 2023) %>%
+    group_by(year) %>%
+    summarise(total_fishers = sum(n_bf_fishers))
+  all_years <- sort(unique(total_fishers$year))
+  
+  plot_ly() %>%
+      add_trace(
+        type = "bar",
+        data = total_fishers, 
+        x = ~year, 
+        y = ~total_fishers,
+        name = "Total number of BF fishers", 
+        marker = list(color = "#696969"),
+        width = 0.8
+      ) %>%
+  layout(yaxis = list(title = "Number of active non-commercial Deep7 fishers", zeroline = FALSE,
+                      range  = list(0,800)),  
+            xaxis = list(
+              title = "Year",
+              tickmode = "array",
+              tickvals = all_years,
+              ticktext = all_years,
+              tickangle = 0,
+              dtick = 1,
+              showline = FALSE
+            ), 
+            legend = list(x = 1, y = 1,
+            xanchor = "right",
+            yanchor = "top"))
+
 })
 
 # Function to load data and run analysis
 # In server
-data_prep <- eventReactive(sim_trigger(), {
-    
-    percent_inactive <- (input$percent_inactive/100)
-    only_bf_registered <- input$only_bf_registered 
-    selected_quantile <- input$selected_quantile
-    filter_level_id <- input$which_filter_level
-    filter_taxa_id <- input$which_filter_taxa_level
-    percent_unregistered <- (input$percent_unregistered/100)
-    
-    # Apply the correction related to the assumed # of BF registered fishers 
-    # catching at least one deep7 in any given year
-    # and the percentage of boats that are not registered in the BFVR
-    FC_sim <- FC %>% 
-        mutate(n_bf_fishers = n_bf_fishers - (n_bf_fishers * percent_inactive),
-        n_bf_fishers = n_bf_fishers + n_bf_fishers * (1 - percent_unregistered)) 
-
+data_prep <- reactive({
+    req(FC_sim())
+    FC_sim <- FC_sim()
+    #only_bf_registered <- input$only_bf_registered 
+    catch_cutoff <- input$catch_cutoff
+    filter_level_id <- "Trip" #input$which_filter_level
+    # filter_taxa_id <- input$which_filter_taxa_level
+        
     # Create a new column for future data manipulation
     F2$trip_type <- 0
 
     if(filter_level_id == "Trip" | filter_level_id == "Both"){
-      QT_trip <- QT_trip %>% 
-        filter(quantiles == selected_quantile) %>% 
-        as.data.table()
+      # QT_trip <- QT_trip %>% 
+      #   filter(quantiles == catch_cutoff) %>% 
+      #   as.data.table()
 
-      F2[d7 > QT_trip[sp_frs_id=="d7"]$value]$trip_type <- 1
-      
-      if(filter_taxa_id == "All taxa" ){
-  
-        F2[s17 > QT_trip[sp_frs_id=="s17"]$value| 
-            s19 > QT_trip[sp_frs_id=="s19"]$value| 
-            s21 > QT_trip[sp_frs_id=="s21"]$value|
-            s22 > QT_trip[sp_frs_id=="s22"]$value|
-            s97 > QT_trip[sp_frs_id=="s97"]$value| 
-            s20 > QT_trip[sp_frs_id=="s20"]$value 
-          ]$trip_type <- 1
+      if(catch_cutoff == "low"){
+        F2[d7 > 50]$trip_type <- 1
       }
+      if(catch_cutoff == "med"){
+        F2[d7 > 70]$trip_type <- 1
+      }
+      if(catch_cutoff == "high"){
+        F2[d7 > 100]$trip_type <- 1
+      }
+      # if(filter_taxa_id == "All taxa" ){
+  
+        # F2[s17 > QT_trip[sp_frs_id=="s17"]$value| 
+        #     s19 > QT_trip[sp_frs_id=="s19"]$value| 
+        #     s21 > QT_trip[sp_frs_id=="s21"]$value|
+        #     s22 > QT_trip[sp_frs_id=="s22"]$value|
+        #     s97 > QT_trip[sp_frs_id=="s97"]$value| 
+        #     s20 > QT_trip[sp_frs_id=="s20"]$value 
+        #   ]$trip_type <- 1
+      # }
     }
 
      # Sum catches to annual-level per fisher
@@ -68,30 +158,33 @@ data_prep <- eventReactive(sim_trigger(), {
     # Apply the annual-level filters to classify fishers as comm. vs non-comm.
     F3$annual_type <- "NC"
 
-    if(filter_level_id == "Annual" | filter_level_id == "Both"){
-      QT_annual <- QT_annual %>% 
-          filter(quantiles == selected_quantile) %>% as.data.table()
+    # if(filter_level_id == "Annual" | filter_level_id == "Both"){
+    #   # QT_annual <- QT_annual %>% 
+    #   #     filter(quantiles == catch_cutoff) %>% as.data.table()
+    #   if(catch_cutoff == "low"){
+    #     F3[d7 > 450]$annual_type <- "Comm"
+    #   }else{
+    #     F3[d7 > 500]$annual_type <- "Comm"
+    #   }
 
-      F3[d7 > QT_annual[sp_frs_id=="d7"]$value]$annual_type <- "Comm"
+        # if(filter_taxa_id == "All taxa" ){
         
-        if(filter_taxa_id == "All taxa" ){
-        
-          F3[s17 > QT_annual[sp_frs_id=="s17"]$value| 
-            s19 > QT_annual[sp_frs_id=="s19"]$value| 
-            s21 > QT_annual[sp_frs_id=="s21"]$value|
-            s22 > QT_annual[sp_frs_id=="s22"]$value|
-            s97 > QT_annual[sp_frs_id=="s97"]$value| 
-            s20 > QT_annual[sp_frs_id=="s20"]$value 
-            ]$annual_type <- "Comm"
-        }
-    }
+        #   F3[s17 > QT_annual[sp_frs_id=="s17"]$value| 
+        #     s19 > QT_annual[sp_frs_id=="s19"]$value| 
+        #     s21 > QT_annual[sp_frs_id=="s21"]$value|
+        #     s22 > QT_annual[sp_frs_id=="s22"]$value|
+        #     s97 > QT_annual[sp_frs_id=="s97"]$value| 
+        #     s20 > QT_annual[sp_frs_id=="s20"]$value 
+        #     ]$annual_type <- "Comm"
+        # }
+    #}
     F3 <- F3 %>% 
     mutate(fisher_type=if_else(annual_type=="Comm","Comm",fisher_type))
 
     # Apply filters on the fishers
-    if (input$only_bf_registered == "Y") { 
-      F3 <- F3 %>% filter(bf_registr == "Y") 
-    }
+    # if (input$only_bf_registered == "Y") { 
+    #   F3 <- F3 %>% filter(bf_registr == "Y") 
+    # }
     
     F3 <- F3 %>% 
       filter(fisher_type == "NC")
@@ -103,7 +196,6 @@ data_prep <- eventReactive(sim_trigger(), {
 
     return(list(
         QT_sim = QT_sim,
-        FC_sim = FC_sim, 
         F3 = F3
     ))
 
@@ -113,15 +205,12 @@ QT_sim <- reactive({
   data_prep()$QT_sim
 })
 
-FC_sim <- reactive({
-  data_prep()$FC_sim
-})
 
 F3 <- reactive({
   data_prep()$F3
 })
 
-run_sim <- eventReactive(sim_trigger(), {
+run_sim <- reactive({
   # Create empty results list to fill
   Results <- list() 
   # Get the actual data frame from the reactive function
@@ -132,9 +221,9 @@ run_sim <- eventReactive(sim_trigger(), {
     set.seed(1234)
     # Sample "n" times from the annual catch data set, where "n" is the number of
     # non-commercial BF fishers in a given Year x County.
-    for (i in 1:100) {
+    for (i in 1:50) {
       # Update progress bar
-      incProgress(1/100, detail = paste("Iteration", i, "of", 100))
+      incProgress(1/50, detail = paste("Iteration", i, "of", 50))
       
       aSample <- f3_data %>% # Use f3_data instead of F3
         group_by(year, county) %>% 
@@ -194,161 +283,128 @@ Final.all.sp <- reactive({
     )
   })
 
-# Plot Species-specific results
-output$species_plot <- renderPlotly({
+# create species-specific catch df for plots
+total_catch_sp <- reactive({
   req(Final.all.sp())
-
-options <- extras() # currently only extra is if you want to plot underreporting
+  options <- extras() # currently only extra is if you want to plot underreporting
+  
+  # First create data for Non-commercial - BFVR approach
+  non_commercial_data <- Final.all.sp() %>%
+    group_by(year, species) %>% 
+    summarise(catch = quantile(lbs_caught, .5)) %>% 
+    mutate(type = "Non-commercial - BFVR approach") %>%
+    filter(year < 2023)
     
-# First create data for Non-commercial - BFVR approach
-non_commercial_data <- Final.all.sp() %>%
-  group_by(year, species) %>% 
-  summarise(catch = quantile(lbs_caught, .5)) %>% 
-  mutate(type = "Non-commercial - BFVR approach") %>%
-  filter(year < 2023)
-  
-# Decide whether to include unreported CML based on proportion
-if (options$prop_unreported > 0) {
-  # Create data with both regular CML and unreported CML and NC
-  local_cml_all_sp <- cml.all.sp %>%
-    mutate(catch = (catch * options$prop_unreported),
-            type = "Commercial - CML unreported") %>% 
-    bind_rows(cml.all.sp)
-  
-  # Combine all data
-  plot_data <- bind_rows(non_commercial_data, local_cml_all_sp)
-} else {
-  # Only include the regular CML data (no unreported)
-  plot_data <- bind_rows(non_commercial_data, cml.all.sp)
-}
-# Set type of catch as a factor to control order of bars in plot
-# and set which colors to use for each type
-colors <- c("Commercial - CML reported" = "#F09008FF", 
-            "Commercial - CML unreported" = "#7868C0FF", 
-            "Non-commercial - BFVR approach" = "#488820FF",
-            "2024 Assessment total catch" = "grey")
-
-# Get all unique years from the data to use as breaks
-all_years <- sort(unique(plot_data$year))
-
-plot_data <- plot_data %>%
+  # Decide whether to include unreported CML based on proportion
+  if (options$prop_unreported > 0) {
+    # Create data with both regular CML and unreported CML and NC
+    local_cml_all_sp <- cml.all.sp %>%
+      mutate(catch = (catch / (1-options$prop_unreported)) * options$prop_unreported,
+              type = "Commercial - CML unreported") %>% 
+      bind_rows(cml.all.sp)
+    
+    # Combine all data
+    plot_data <- bind_rows(non_commercial_data, local_cml_all_sp)
+  } else {
+    # Only include the regular CML data (no unreported)
+    plot_data <- bind_rows(non_commercial_data, cml.all.sp)
+  }
+  plot_data <- plot_data %>%
   left_join(SP.id, by = c("species" = "sp_frs_id"), relationship = "many-to-many") %>% 
-  filter(species != "d7") %>%
   mutate(type = factor(type, levels = c("Non-commercial - BFVR approach", 
   "Commercial - CML unreported", "Commercial - CML reported"))) %>%
   distinct(year, species, type, .keep_all = TRUE) 
+})
 
-# Create a list to store individual plots
-plot_list <- list()
-  # Basic layout settings for all plots
-base_layout <- list(
-  xaxis = list(
-    tickmode = "array",
-    tickvals = all_years,
-    ticktext = all_years,
-    tickangle = -45,
-    dtick = 1
-  ),
-  hovermode = "closest",
-  legend = list(title = list(text = "Type")),
-  margin = list(t = 70)  # Increase top margin for title
-)
-common_name_vec <- unique(plot_data$common_name)
-# Create a plot for each facet value
-for (i in 1:length(common_name_vec)) { 
-  
-  current_sps <- common_name_vec[i]
-  # Filter data for this facet
-  facet_data <- plot_data %>% 
-    filter(common_name == current_sps)
-  tc.sp <- tc.all.sp %>% 
-  filter(common_name == current_sps)
+# Track click events using the trace name directly
+# Make sure the source matches exactly with what's in the plot creation function
+observeEvent(event_data("plotly_legendclick", source = "barPlot"), {
+  clicked <- event_data("plotly_legendclick", source = "barPlot")
+  if(!is.null(clicked) && !is.null(clicked$name)) {
+    # Get the name of the clicked trace
+    trace_name <- clicked$name
+    
+    # Get current visibility states
+    current_states <- visibilityState()
+    
+    # Toggle the visibility for this trace
+    if(!is.null(current_states[[trace_name]])) {
+      current_states[[trace_name]] <- if(current_states[[trace_name]] == TRUE) "legendonly" else TRUE
+      visibilityState(current_states)
+    }
+  }
+})
 
-  facet_data$hover_text <- paste0("Year: ", facet_data$year, 
-                                 "<br>Catch: ", format(round(facet_data$catch/1000, 1), big.mark=","), 
-                                 "K")
-  
-  tc.sp$hover_text <- paste0("Year: ", tc.sp$year, 
-                            "<br>Total catch: ", format(round(tc.sp$catch/1000, 1), big.mark=","), 
-                            "K")
-  
-  # Create individual plot
+# Plot Species-specific results
+output$opaka_plot <- renderPlotly({
+  req(total_catch_sp())
+  current_states <- visibilityState()
+  opaka_catch <- total_catch_sp() %>% filter(species == "s19")
+  tc.opaka <- tc.all.sp %>% filter(species == "s19")
+  create_layered_catchplot(opaka_catch, tc.opaka, 
+    catch_colors, visibility_states = current_states, 
+    source_id = "barPlot")
+})
 
-      p <- plot_ly(data = facet_data, x = ~year, y = ~round(catch, digits = 0), color = ~type, 
-                  type = "bar",
-                  colors = colors,
-                  showlegend = (i ==1),
-                  text = ~hover_text,
-                  hoverinfo = "text",
-                  textposition = "none") %>%
-            add_trace(data = tc.sp, x = ~year, y = ~catch, type = "scatter",
-                  mode = "lines+markers",
-                  line = list(color = "grey", width = 2),
-                  marker = list(color = "grey", size = 3),
-                  name = "Total catch used in the 2024 assessment", showlegend = (i ==1),
-                  text = ~hover_text, hoverinfo = "text",
-                  textposition = "none") %>%
-        layout(
-          annotations = list( 
-              list( 
-                x = 0.2,  
-                y = 1.0,  
-                text = current_sps,  
-                xref = "paper",  
-                yref = "paper",  
-                xanchor = "center",  
-                yanchor = "bottom",  
-                showarrow = FALSE 
-              )),
-        xaxis = base_layout$xaxis,
-        yaxis = list(
-        title = "Catch (lbs)",
-        autorange = TRUE,
-        hoverformat = ".0f"  
-        ),
-        hovermode = base_layout$hovermode,
-        margin = base_layout$margin,
-        barmode = 'stack'
-      )                 
-  
-  plot_list[[i]] <- p
-}
+output$onaga_plot <- renderPlotly({
+  req(total_catch_sp())
+  current_states <- visibilityState()
+  onaga_catch <- total_catch_sp() %>% filter(species == "s22")
+  tc.onaga <- tc.all.sp %>% filter(species == "s22")
+  create_layered_catchplot(onaga_catch, tc.onaga, 
+    catch_colors, visibility_states = current_states, 
+    source_id = "barPlot")
+})
 
-p.sp <- subplot(
-        plot_list, 
-        nrows = 3, 
-        shareY = FALSE,
-        titleX = FALSE,
-        margin = 0.07  # Increase margin for titles
-      ) %>%
-  layout(
-  annotations = list(
-            list(
-              text = "Catch (lbs)",
-              textangle = -90,
-              x = -.04,       # Position from left edge
-              y = 0.5,        # Middle of plot area 
-              xref = "paper",
-              yref = "paper",
-              showarrow = FALSE,
-              font = list(size = 14)
-            ),
-            list(
-              text = "Year",
-              x = .5,       # Position from left edge
-              y = 0,        # Middle of plot area 
-              xref = "paper",
-              yref = "paper",
-              showarrow = FALSE,
-              font = list(size = 14),
-              yshift = -40  
-          )),
-    showlegend = TRUE, 
-    legend = list(orientation = "h",
-    x = 0.5, y = -0.1, xanchor = "center"))
-  p.sp
+output$ehu_plot <- renderPlotly({
+  req(total_catch_sp())
+  current_states <- visibilityState()
+  ehu_catch <- total_catch_sp() %>% filter(species == "s21")
+  tc.ehu <- tc.all.sp %>% filter(species == "s21")
+  create_layered_catchplot(ehu_catch, tc.ehu, 
+    catch_colors, visibility_states = current_states, 
+    source_id = "barPlot")
+})
 
-}) #end of species-specific plots
+output$kale_plot <- renderPlotly({
+  req(total_catch_sp())
+  current_states <- visibilityState()
+  Kale_catch <- total_catch_sp() %>% filter(species == "s17")
+  tc.Kale <- tc.all.sp %>% filter(species == "s17")
+  create_layered_catchplot(Kale_catch, tc.Kale, 
+    catch_colors, visibility_states = current_states, 
+    source_id = "barPlot")
+})
+
+output$gindai_plot <- renderPlotly({
+  req(total_catch_sp())
+  current_states <- visibilityState()
+  gindai_catch <- total_catch_sp() %>% filter(species == "s97")
+  tc.gindai <- tc.all.sp %>% filter(species == "s97")
+  create_layered_catchplot(gindai_catch, tc.gindai, 
+    catch_colors, visibility_states = current_states, 
+    source_id = "barPlot")
+})
+
+output$hapu_plot <- renderPlotly({
+  req(total_catch_sp())
+  current_states <- visibilityState()
+  hapu_catch <- total_catch_sp() %>% filter(species == "s15")
+  tc.hapu <- tc.all.sp %>% filter(species == "s15")
+  create_layered_catchplot(hapu_catch, tc.hapu, 
+    catch_colors, visibility_states = current_states, 
+    source_id = "barPlot")
+})
+
+output$lehi_plot <- renderPlotly({
+  req(total_catch_sp())
+  current_states <- visibilityState()
+  lehi_catch <- total_catch_sp() %>% filter(species == "s58")
+  tc.lehi <- tc.all.sp %>% filter(species == "s58")
+  create_layered_catchplot(lehi_catch, tc.lehi, 
+    catch_colors, visibility_states = current_states, 
+    source_id = "barPlot")
+})
 
 # Create the dataframe that will be shared for Deep7 plot and ACL table
 total_catch_df <- reactive({
@@ -367,7 +423,7 @@ total_catch_df <- reactive({
   if (options$prop_unreported > 0) {
     # Create data with both regular CML and unreported CML and NC
     local_cml_all <- cml.all %>%
-    mutate(catch = (catch * options$prop_unreported), 
+    mutate(catch = (catch / (1-options$prop_unreported)) * options$prop_unreported, 
     type = "Commercial - CML unreported") %>%
       bind_rows(cml.all)
     
@@ -383,105 +439,63 @@ total_catch_df <- reactive({
   plot_data <- plot_data %>%
     mutate(type = factor(type, 
     levels = c("Non-commercial - BFVR approach", "Commercial - CML unreported", 
-    "Commercial - CML reported")))
-
-  return(plot_data)
-
+    "Commercial - CML reported"))) %>% 
+    mutate(unreported = options$prop_unreported)
 }) #end of total_catch_df
+
 
 # Create a total Deep7 plot
 output$combined_plot <- renderPlotly({
   req(total_catch_df())
-  plot_data <- total_catch_df()
-  colors <- c("Commercial - CML reported" = "#F09008FF", 
-              "Commercial - CML unreported" = "#7868C0FF", 
-              "Non-commercial - BFVR approach" = "#488820FF",
-              "2024 Assessment total catch" = "grey")
+  plot_data <- total_catch_df() %>% 
+    select(-unreported)
+  # Current visibility states
+  current_states <- visibilityState()
 
-  # Get all unique years from the data to use as breaks
-  all_years <- sort(unique(plot_data$year))
-
-  plot_data$hover_text <- paste0("Year: ", plot_data$year, 
-                                  "<br>Catch: ", format(round(plot_data$catch/1000, 1), big.mark=","), 
-                                  "K")
-
-  tc.all$hover_text <- paste0("Year: ", tc.all$year, 
-                          "<br>Total catch: ", format(round(tc.all$catch/1000, 1), big.mark=","), 
-                          "K")
-
-  # Create interactive plot with plot_ly
-  p <- plot_ly(plot_data, x = ~year, y = ~catch, color = ~type, 
-          type = "bar", 
-          colors = colors,
-          text = ~hover_text,
-          hoverinfo = "text") %>%     
-      add_trace(data = tc.all, x = ~year, y = ~catch, type = "scatter",
-          mode = "lines+markers",
-          line = list(color = "grey", width = 2),
-          marker = list(color = "grey", size = 3),
-          name = "Total catch used in the 2024 assessment", 
-          text = ~hover_text,
-          hoverinfo = "text"
-          ) %>%
-      layout(yaxis = list(title = "Catch (lbs)"), 
-            xaxis = list(
-              title = "Year",
-              tickmode = "array",
-              tickvals = all_years,
-              ticktext = all_years,
-              tickangle = 0,
-              dtick = 1
-            ), 
-            yaxis = list(
-            hoverformat = ".0f"
-            ),
-            legend = list(x = 1, y = 1,
-            xanchor = "right",
-            yanchor = "top"),
-            barmode = 'stack') %>%
-      # Add text annotations for the annual sum above each bar
-      add_annotations(
-        data = plot_data %>% group_by(year) %>% summarize(total = round(sum(catch), digits = -3)),
-        x = ~year,
-        y = ~total,
-        text = ~paste0(total/1000, "K"),
-        showarrow = FALSE,
-        yshift = 16,  # Adjust as needed to position text above bars
-        font = list(size = 14)
-      )
+  p <- create_layered_catchplot(plot_data, tc.all, 
+        catch_colors, visibility_states = current_states, source_id = "barPlot") 
+    
+  p
 
 }) # end of Deep 7 catch plot
-
 
 output$acl_table <- reactable::renderReactable({
 
     req(total_catch_df())
-
-     # Create a helper function to format values differently based on row
-    formatCell <- function(value, row_index) {
-      if (row_index == 3) {
-        percent(value, accuracy = 0.1)
-      } else {
-        comma(value, accuracy = 1)
-      }
-    }
     
-    recent_catch <- total_catch_df() %>% group_by(year) %>% filter(year >= 2018) %>% 
-    summarise(total_catch = sum(catch)) %>% ungroup() %>%
-    summarise(recent_catch = mean(total_catch)) %>% pull(recent_catch)
+    recent_catch <- total_catch_df() %>% 
+      select(-unreported) %>% 
+      filter(year >= 2018 & type == "Commercial - CML reported") %>% 
+      summarise(recent_catch = mean(catch)) %>% pull(recent_catch)
 
-    model_management_table <- total_catch_df() %>% group_by(year) %>% 
+    recent_cml_prop <- total_catch_df() %>% 
+      select(-unreported) %>% 
+    pivot_wider(names_from = "type", values_from = "catch") %>%
+    mutate(total_catch = rowSums(across(2:last_col())),
+       cml_prop = `Commercial - CML reported`/total_catch) %>% 
+    #filter(year >= 2018) %>%
+    summarise(mean_cml_prop = mean(cml_prop)) %>% pull(mean_cml_prop)
+
+    model_management_table <- total_catch_df() %>% select(-unreported) %>% group_by(year) %>% 
+      #filter(year >= 2018 & year < 2023) %>%
       summarise(total_catch = sum(catch)) %>% 
       summarise(mean_catch = mean(total_catch)/1000) %>%
-      mutate(biomass_2023 =( 0.022957 * mean_catch + 1.502262),
-              ACL = 2.26047 * mean_catch + 15.97866,
+      mutate(biomass_2023 =( 0.022997 * mean_catch + 1.502262),
+              ACL_total = (0.002265 * mean_catch + 0.01598)*1000,
+              ACL = (ACL_total * recent_cml_prop) - 40, #-40 for demonstration purposes to get the ACL closer to assessment ACL 
               recent_catch = recent_catch/1000,
-              percent_acl = (recent_catch/ACL))
+              percent_acl = (recent_catch/ACL),
+              percent_recent = recent_catch/mean_catch) #%>%
+      #mutate(ACL_total = ACL_total - 40)
     df <- data.frame(
-      "type" = c("ACL (total catch)", "Recent catch", "Recent catch relative to ACL"),
-      "Assessment_2024" = c(1105027, 395400, .36), # recent catch: TC %>% filter(Year < 2023 & Year >= 2018) %>% summarise(mean(d7))
-      "New_Scenario" = c(model_management_table$ACL*1000, 
+      "type" = c("Total ACL", "ACL (reported commercial catch)", "Recent reported commercial catch (2018-2022)",
+      "Recent reported commercial catch relative to total catch", 
+      "Recent reported commercial catch relative to ACL"),
+      "Assessment_2024" = c(1008000, 493000, 186360, .47, .38), # recent catch: cml %>% filter(year < 2023 & year >= 2018) %>% summarise(mean(d7)), rep comm catch to total catch: cml %>% filter(year < 2023 & year >= 2018) %>% summarise(mean(d7))/TC %>% filter(Year < 2023 & Year >= 2018) %>% summarise(mean(d7))
+      "New_Scenario" = c(model_management_table$ACL_total*1000,
+                  model_management_table$ACL*1000, 
                   model_management_table$recent_catch*1000,
+                  model_management_table$percent_recent,
                   model_management_table$percent_acl))
     reactable(
       df,
@@ -501,11 +515,11 @@ output$acl_table <- reactable::renderReactable({
         Assessment_2024 = colDef(
           name = "Assessment 2024",
           cell = function(value, index) {
-            if (index == 3) {
-              # Format as percentage for row 3
+            if (index == 4 | index == 5) {
+              # Format as percentage for row 4 and 5
               percent(value, accuracy = 0.1)
             } else {
-              # Format with commas for rows 1 and 2
+              # Format with commas for rows 1, 2, and 3
               comma(value, accuracy = 1)
             }
           }
@@ -513,11 +527,11 @@ output$acl_table <- reactable::renderReactable({
         New_Scenario = colDef(
           name = "New Scenario",
           cell = function(value, index) {
-            if (index == 3) {
-              # Format as percentage for row 3
+            if (index == 4| index == 5) {
+              # Format as percentage for row 4 and 5
               percent(value, accuracy = 0.1)
             } else {
-              # Format with commas for rows 1 and 2
+              # Format with commas for rows 1, 2, and 3
               comma(value, accuracy = 1)
             }
           }
@@ -532,6 +546,75 @@ output$acl_table <- reactable::renderReactable({
     ) 
   })
 
+allocations <- reactive({
+  
+  req(total_catch_df())
+  
+  recent_catch <- total_catch_df() %>% select(-unreported) %>% 
+    filter(year >= 2018 & type == "Commercial - CML reported") %>% 
+    summarise(recent_catch = mean(catch)) %>% pull(recent_catch)
+  
+  recent_cml_prop <- total_catch_df() %>% select(-unreported) %>% 
+    pivot_wider(names_from = "type", values_from = "catch") %>%
+    mutate(total_catch = rowSums(across(2:last_col())),
+           cml_prop = `Commercial - CML reported`/total_catch) %>% 
+    #filter(year >= 2018) %>%
+    summarise(mean_cml_prop = mean(cml_prop)) %>% pull(mean_cml_prop)
+  
+  model_management_table <- total_catch_df() %>% select(-unreported) %>% group_by(year) %>% 
+    #filter(year >= 2018 & year < 2023) %>%
+    summarise(total_catch = sum(catch)) %>% 
+    summarise(mean_catch = mean(total_catch)/1000) %>%
+    mutate(biomass_2023 =( 0.022997 * mean_catch + 1.502262),
+           ACL_total = (0.002265 * mean_catch + 0.01598)*1000,
+           ACL = (ACL_total * recent_cml_prop) - 40, #-40 for demonstration purposes to get the ACL closer to assessment ACL 
+           recent_catch = recent_catch/1000,
+           percent_acl = (recent_catch/ACL),
+           percent_recent = recent_catch/mean_catch)
+  
+  total_fish <- model_management_table$ACL_total/10
+  
+  commercial <- (model_management_table$ACL/10/total_fish)*100
+  unreported_prop <- total_catch_df() %>% summarise(prop = first(unreported)) %>% pull(prop) %>% as.numeric()
+  unreported <- round(commercial/(1-unreported_prop) - commercial)
+  commercial <- round(commercial)
+  non_commercial <- 100 - commercial - unreported
+  
+  # Calculate actual fish counts based on percentages
+  commercial_fish <- round((commercial / 100) * total_fish)
+  unreported_fish <- round((unreported / 100) * total_fish)
+  total_fish <- round(total_fish)
+  noncommercial_fish <- total_fish - commercial_fish - unreported_fish
+  
+  data.frame(
+    Sector = c("Commercial", "Non-commercial", "Unreported"),
+    Allocation = c(commercial, non_commercial, unreported),
+    FishCount = c(commercial_fish, noncommercial_fish, unreported_fish),
+    Total = rep(total_fish, 3),
+    UnreportedProp = rep(unreported_prop, 3)
+  )
+})
+
+output$allocation_plot <- renderPlot({
+  req(allocations())
+  
+  data <- allocations()
+  
+  unreported_prop <- allocations() %>% summarise(unreported = first(UnreportedProp)) %>% pull(unreported) %>% as.numeric()
+  
+  if (unreported_prop >= 0.5){
+    aclplot(data) 
+  }
+  else{
+    options(ggimage.keytype = "image")
+    new_plot <- new_acl_plot(data) + theme(legend.position = "none")
+    
+
+    (old_acl_plot + plot_spacer() + new_plot) +
+    plot_layout(widths = c(1, 0.1, 1), guides = "collect") &
+    theme(legend.position = "bottom", legend.text = element_text(size = 12)) 
+  }
+})
+
+
 } #end of server
-
-

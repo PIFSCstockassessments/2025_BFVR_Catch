@@ -9,8 +9,26 @@ library(ggthemes)
 library(plotly)
 library(scales)
 library(reactable)
+library(shinyjs)
+library(ggimage)
+library(ggplotify)
+library(ggfun)
+library(ggimage)
+library(patchwork)
+library(magick)
 
 
+#source plotting functions
+source(file.path("layered_barplot.r"))
+source(file.path("acl_allocation_plot.r"))
+source(file.path("old_acl_plot.r"))
+source(file.path("new_acl_plot.r"))
+source(file.path("legend.r"))
+
+catch_colors <- c("Commercial - CML reported" = "#F09008FF", 
+            "Commercial - CML unreported" = "#7868C0FF", 
+            "Non-commercial - BFVR approach" = "#488820FF",
+            "2024 Assessment total catch" = "grey")
 
 # Load trip-level limits outputted from 02_MRIP_Interview_Catch.qmd
 QT_trip <- fread(file.path("data", "mrip_quantiles.csv")) %>%

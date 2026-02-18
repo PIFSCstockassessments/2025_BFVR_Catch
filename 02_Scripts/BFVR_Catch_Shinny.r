@@ -21,14 +21,14 @@ only_bf_registered  <- "Y"  # Only keep BF-registered fishers
 selected_quantile <- c("q90","q95","q99","max")[3]
 
 # What percentage of commercial catch is unreported
-percent_unreported <- 0
+percent_unreported <- 50
 
 # What filters to use "Deep7 only" or "All taxa".
 which_filter_taxa_level <- c("Deep7 only","All taxa")[2]
 
 # At which level should catch data be filtered, trip (MRIP), annual (Lamson),
 # or both?
-which_filter_level <- c("Trip","Annual","Both")[3]
+which_filter_level <- c("Trip","Annual","Both")[1]
 #=======================================================
 
 #================Load data==============================
@@ -208,7 +208,7 @@ non_commercial_data <- Final.all.sp %>%
 if (percent_unreported > 0) {
   # Create data with both regular CML and unreported CML and NC
   local_cml_all_sp <- cml.all.sp %>%
-    mutate(catch = (catch * options$prop_unreported),
+    mutate(catch = (catch * percent_unreported/100),
             type = "Commercial - CML unreported") %>% 
     bind_rows(cml.all.sp)
   
@@ -264,7 +264,7 @@ non_commercial_data_all <- Final.all %>%
 if (percent_unreported > 0) {
   # Create data with both regular CML and unreported CML and NC
   local_cml_all <- cml.all %>%
-  mutate(catch = (catch * options$prop_unreported), 
+  mutate(catch = (catch * percent_unreported/100), 
   type = "Commercial - CML unreported") %>%
     bind_rows(cml.all)
   
@@ -290,25 +290,51 @@ ggplot(data = plot_data_all)+
   theme_minimal()+
   theme(axis.text.x=element_text(angle=45,hjust=1),
         strip.text = element_text(size = 14))+
-  labs(y="Year",x="Catch (lbs)")+
+  labs(x="Year",y="Catch (lbs)")+
   scale_fill_manual(values = colors) +
   scale_color_manual(values = colors)
 
 
 plot_data_all %>% filter(type=="Non-commercial - BFVR approach") %>% group_by() %>% summarize(lbs=mean(catch))
-      
+
+recent_catch <- plot_data_all %>% filter(year >= 2018 & type == "Commercial - CML reported") %>% 
+  summarise(recent_catch = mean(catch)) %>% pull(recent_catch)
+
+recent_cml_prop <- plot_data_all %>% pivot_wider(names_from = "type", values_from = "catch") %>%
+  mutate(total_catch = rowSums(across(2:last_col())),
+        cml_prop = `Commercial - CML reported`/total_catch) %>% #filter(year >= 2018) %>%
+  summarise(mean_cml_prop = mean(cml_prop)) %>% pull(mean_cml_prop)
+
 model_management_table <- plot_data_all %>% group_by(year) %>% 
+  #filter(year >= 2018 & year < 2023) %>% 
   summarise(total_catch = sum(catch)) %>% 
   summarise(mean_catch = mean(total_catch)/1000) %>%
-  mutate(biomass_2023 =( 0.022957 * mean_catch + 1.502262),
-          ACL = 2.26047 * mean_catch + 15.97866,
+  mutate(biomass_2023 =( 0.022997 * mean_catch + 1.502262),
+          ACL_total = (2.265e-03 * mean_catch + 1.598e-02)*1000,
+          ACL = ACL_total * recent_cml_prop,
           recent_catch = recent_catch/1000,
-          percent_acl = (recent_catch/ACL)) 
+          percent_acl = (recent_catch/ACL),
+          percent_recent = recent_catch/mean_catch) 
 
 data.frame("type" = c("ACL (total catch)", "Recent catch", "Recent catch relative to ACL"),
-"Assessment_2024" = c(1105027, 395400, .36), 
+"Assessment_2024" = c(493000, 186360, .38), # recent catch: cml %>% filter(year < 2023 & year >= 2018) %>% summarise(mean(d7)) 
 "New_Scenario" = c(model_management_table$ACL*1000, model_management_table$recent_catch*1000,
 model_management_table$percent_acl)) %>% 
 column_to_rownames("type") %>%
-flextable() 
+flextable()
 
+ggplot() +
+  # Add the gray background bars for the totals
+  geom_col(aes(x = as.integer(year), y = catch), 
+           fill = "#D3D3D3", 
+           width = 0.8)+
+  # Add the colored bars for each segment
+  geom_col(data = plot_data_all, 
+           aes(x = as.integer(year), y = catch, fill = type),
+           position = position_dodge(width = 0.8), 
+           width = 0.5) +
+  theme_minimal()+
+  theme(axis.text.x=element_text(angle=45,hjust=1),
+        strip.text = element_text(size = 14))+
+  labs(x="Year",y="Catch (lbs)")+
+  scale_fill_manual(values = colors) 

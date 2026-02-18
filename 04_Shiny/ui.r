@@ -1,5 +1,40 @@
 # Define UI
 ui <- page(
+  useShinyjs(),
+  tags$script(HTML("
+    Shiny.addCustomMessageHandler('catchPlot_update_legendState', function(legendState) {
+      Shiny.setInputValue('catchPlot_legendState', legendState);
+    });
+  ")),
+  tags$head(
+    tags$style(HTML("
+      /* Increase font size for slider values */
+      .irs-grid-text, .irs-min, .irs-max, .irs-single, .irs-from, .irs-to {
+        font-size: 14px !important; /* Adjust size as needed */
+      }
+      
+      /* Make the active/selected value even larger if desired */
+      .irs-single, .irs-from, .irs-to {
+        font-size: 16px !important; /* Adjust size as needed */
+      }
+    "))
+  ),
+  tags$head(
+    tags$style(HTML("
+      .compact-input {
+        margin-bottom: -10px;
+        margin-top: -10px;
+      }
+      .compact-input .irs {
+        margin-top: 0;
+        margin-bottom: 0;
+      }
+      .compact-input .control-label {
+        margin-bottom: 0;
+      }
+    "))
+  ),
+  
   title = "Deep7 Commercial and Non-Commercial Catch Analysis",
   
   # Create a tabbed interface
@@ -19,21 +54,20 @@ ui <- page(
             commercial and non-commercial catch of Deep7 bottomfish species in Hawaii."),
             p("The tool uses vessel counts from the Bottomfish Vessel Registry (BFVR) and catch reports
             from the Fisher Reporting System (FRS). It allows users to adjust various key decision points 
-              on how to process these data sources and to see how that affects the final catch estimates. It
+              on how to process these data sources and to see how that affects the final non-commercial catch estimates. It
               then compares these estimates to the total catch used in the 2024 assessment."),
             
             h4("Key Decision Points"),
             tags$ul(
-              tags$li(strong("Commercial Catch Adjustment:"), " Account for unreported commercial catches"),
-              tags$li(strong("Non-commercial Fisher Count Estimation:"), " Adjust for unregistered vessels and inactive vessels"),
-              tags$li(strong("FRS Data Filtering:"), " Select appropriate catch cutoff points to identify non-commercial proxy fishers")
+              tags$li(strong("Non-commercial fisher count:"), " Adjust for unregistered vessels and inactive vessels"),
+              tags$li(strong("FRS data filtering:"), " Select appropriate catch cut-off points to identify non-commercial proxy fishers"),
+              tags$li(strong("Commercial catch adjustment:"), " Account for unreported commercial catches")
             ),
             
             h4("How to Use"),
             p("1. Navigate to the 'Analysis' tab"),
             p("2. Adjust the parameters in the sidebar to reflect your assumptions"),
-            p("3. Click the 'Run Analysis' button to generate results"),
-            p("4. Review the analysis results in the main panel"),
+            p("3. Review the analysis results in the main panel"),
             
             h4("Background"),
             p("The Deep7 bottomfish species are economically and culturally important to Hawaii. 
@@ -54,98 +88,163 @@ ui <- page(
       page_sidebar(
         sidebar = sidebar(
           width = 400,
-          h4("CML catches"),
           
-          sliderInput("prop_unreported", 
-                        label = tooltip("What percentage of the commercial catch is unreported?",
-                        "This is the catch caught by CML holders but not reported in the FRS.
-                        For example, catch that is sold via social media or unsold, where some 
-                        fishers may not feel the need to enter it in the FRS.",
-                        position = "right"), 
-                      min = 0, max = 100, value = 0, step = 10, post = "%"),
-          
-          # SEPARATOR
-          hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"), 
-
           h4("Number of active non-commercial fishers"),
-
-          sliderInput("percent_inactive",
-            label = tooltip("What percentage of BF-registered 
-            boats are not actively trying to catch Deep7 in any given year?",
-            "This is the percentage of boats that are registered in the BFVR
-            but never go fishing for Deep7 or are simply not fishing.", 
-            placement = "right"), 
-            min = 0, max = 100, value = 0, step = 10, post = "%"), 
+          
+          sliderInput("percent_active",
+                      label = tooltip("What percentage of BF-registered 
+            fishers are fishing for Deep7?",
+                                      "This is the percentage of fishers registered in the BFVR
+            that actually go fishing for Deep7.", 
+                                      placement = "right"), 
+                      min = 0, max = 100, value = 100, step = 10, post = "%")|> 
+            tagAppendAttributes(class = "compact-input"), 
           
           sliderInput("percent_unregistered", 
-                        label = tooltip("Of the boats actively fishing for Deep7, what percentage of 
-                        boats are registered in the BFVR?",
-                        "Based on your experience, how often do you see or hear about vessels fishing for Deep7
-                        that are not registered in the BFVR?",
-                        placement = "right"
-                        ),
-                     min = 25, max = 100, value = 100, step = 25, post = "%"),
-   
+                      label = tooltip("What percentage of 
+                        fishers fishing for Deep7 are BF-registered?",
+                                      "How often do you see or hear about people fishing for Deep7
+                        that are not registered in the BFVR? If you select 100% that means everyone you see/hear about
+                        fishing for Deep7 is registered on the BFVR. If you select 50%, that means about half of 
+                        the people you see/hear about fishing for Deep7 are not registered.",
+                                      placement = "right"
+                      ),
+                      min = 50, max = 100, value = 100, step = 10, post = "%")|> 
+            tagAppendAttributes(class = "compact-input"),
+          
           # SEPARATOR
-          hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"),
+          #hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"),
           
-          h4("How should we select non-commercial fisher proxies from the FRS?"),
+          h4("Selecting \"non-commercial fishers\" from the FRS"),
           
-          radioButtons("only_bf_registered", 
-                     "Only include data from fishers on the BF registry?",
-                     choices = c("Yes" = "Y", "No" = "N"), 
-                     selected = "Y"),
+          # radioButtons("only_bf_registered", 
+          #            "Only include data from fishers on the BF registry?",
+          #            choices = c("Yes" = "Y", "No" = "N"), 
+          #            selected = "Y"),
           
-          radioButtons("which_filter_taxa_level",
-                      "Should we classify fishers based only on their total Deep7 catch or also their catch by species?",
-                      choices = c("Deep7 only", "All taxa"), 
-                      selected = "All taxa"),
-
-          selectInput("which_filter_level",
-                    label = tooltip("At what level should we filter the catch data?",
-                    "Should we use MRIP trip-level interviews and/or annual catch
-                    estimates from the Lamson (2007) study.",
-                    placement = "right"
-                    ),
-                    choices = c("Trip", "Annual", "Both"),
-                    selected = "Trip"),
+          # radioButtons("which_filter_taxa_level",
+          #             "Should we classify fishers based only on their total Deep7 catch or also their catch by species?",
+          #             choices = c("Deep7 only", "All taxa"), 
+          #             selected = "All taxa"),
           
-          selectInput("selected_quantile", 
-                    label = tooltip("What cut off should we use?", 
-                    "What cut off point should we use to select non-commercial fishers in the FRS.
-                    For example, 95% would mean that fishers reporting a trip with a catch higher than 95% of all
-                    non-commercial HMRFS interviews would be classified as commercial and filtered out.",
-                    placement = "right"
-                    ),
-                    choices =  c("90%" = "q90", "95%" = "q95", 
-                    "99%" = "q99", "Maximum" = "max"), 
-                    selected = "q99"),
+          radioButtons("catch_cutoff", 
+                       label = tooltip("What cut-off point should we use for catch?", 
+                                       "How much catch should we use as a cut-off point to select \"non-commercial\" fishers in the FRS.
+                    For example, low cut-off would mean that all fishers reporting a trip with a catch higher than 
+                    50 lbs per trip would be classified as commercial and filtered out.",
+                                       placement = "right"
+                       ),
+                       choices =  c("Low cut-off (50 lb/trip)" = "low", 
+                                    "Intermediate cut-off (70 lb/trip)" = "med",
+                                    "High cut-off (100 lb/trip)" = "high"), 
+                       selected = "low") |> 
+            tagAppendAttributes(class = "compact-input"),
+          # selectInput("which_filter_level",
+          #           label = tooltip("At what level should we apply our cut-off points?",
+          #           "Should we use MRIP trip-level interviews and/or annual catch
+          #           estimates from the Lamson (2007) study.",
+          #           placement = "right"
+          #           ),
+          #           choices = c("Trip", "Annual", "Both"),
+          #           selected = "Trip"),
+          # SEPARATOR
+          #hr(style = "border-top: 2px solid #2c3e50; margin-top: 20px; margin-bottom: 20px;"), 
           
-          actionButton("run_analysis", "Run Analysis", class = "btn-primary")
+          h4("Unreported commercial catch"),
+          
+          sliderInput("prop_unreported", 
+                      label = tooltip("What percentage of the commercial catch is unreported?",
+                                      "This is the catch caught by CML holders but not reported in the FRS.
+                        For example, catch that is sold via social media or unsold, where some 
+                        fishers may not feel the need to enter it in the FRS.",
+                                      position = "right"), 
+                      min = 0, max = 100, value = 0, step = 10, post = "%")|> 
+            tagAppendAttributes(class = "compact-input")
+          # actionButton("run_analysis", "Run Analysis", class = "btn-primary")
         ),
-    layout_columns(
-      card(
-          card_header("Deep7 Catch by Year"),
-          card_body(
+        accordion(
+          
+          accordion_panel(
+            title = "How many active non-commercial Deep7 fishers are there?",
+            tabsetPanel(
+              id = "active_fishers_plot",
+              tabPanel(
+                "Honolulu",
+                plotlyOutput("honolulu_fishers_plot")
+              ),
+              tabPanel(
+                "Hawaii",
+                plotlyOutput("hawaii_fishers_plot")
+              ),
+              tabPanel(
+                "Kauai",
+                plotlyOutput("kauai_fishers_plot")
+              ),
+              tabPanel(
+                "Maui",
+                plotlyOutput("maui_fishers_plot")
+              ),
+              tabPanel(
+                "All",
+                plotlyOutput("total_fishers_plot")
+              )
+            )
+          ),
+          
+          accordion_panel(
+            title = "What is the Deep7 catch by year?",
             plotlyOutput("combined_plot")
-          )
-      ),
-      layout_columns(
-        card(
-          card_header("ACL Table"),
-          card_body(
+          ),
+          
+          accordion_panel(
+            title = "What does the Annual Catch Limits (ACL) look like?",
             reactable::reactableOutput("acl_table")
-          )
+          ),
+          
+          accordion_panel(
+            title = "What does the allocation of the Total ACL look like?",
+            plotOutput("allocation_plot")
+          ),
+          
+          accordion_panel(
+            title = "What are the catches by species?",
+            tabsetPanel(
+              id = "species_plots",
+              tabPanel(
+                "Opakapaka",
+                plotlyOutput("opaka_plot")
+              ),
+              tabPanel(
+                "Onaga",
+                plotlyOutput("onaga_plot")
+              ),
+              tabPanel(
+                "Ehu",
+                plotlyOutput("ehu_plot")
+              ),
+              tabPanel(
+                "Kalekale",
+                plotlyOutput("kale_plot")
+              ),
+              tabPanel(
+                "Gindai",
+                plotlyOutput("gindai_plot")
+              ),
+              tabPanel(
+                "Lehi",
+                plotlyOutput("lehi_plot")
+              ),
+              tabPanel(
+                "Hapu'upu'u",
+                plotlyOutput("hapu_plot")
+              )
+            )
+          ),
+          
+          # Control initial state - can be "first" (default), "all", or "none"
+          open = "first"
         )
-      )
-    ),
-
-    card(
-      card_header("Deep7 Catch by Species"),
-      card_body(
-        plotlyOutput("species_plot")
-      )
-    )
+        
       )
     )
   )
